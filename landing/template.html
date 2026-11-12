@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title data-slot="meta_title" data-max="40" data-label="브라우저 제목">정책자금 지원센터 | 내 사업장 조건으로 확인</title>
+<meta name="description" content="연매출 5억 이상 제조업 대표님, 올해 받을 수 있는 정책자금을 무료로 확인하세요." data-slot="meta_desc" data-slot-attr="content" data-max="90" data-label="검색 설명">
+<meta property="og:title" content="제조업 대표님, 올해 정책자금 확인하셨나요?" data-slot="og_title" data-slot-attr="content" data-max="40" data-label="공유 제목">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css">
+</head>
+<body style="margin:0">
+<!--
+  템플릿 규칙
+  - 바꿀 문구: data-slot="키" data-max="최대글자수(공백포함)" data-label="용도"
+  - 속성값(meta content 등): data-slot-attr="속성명"
+  - 신청 버튼: data-cta (클릭 집계) / 신청폼: <form data-tpf-form> (필드명 name, phone, company, memo, consent)
+  흐름: ①영상과 같은 훅 → ②핵심 3가지 → ③이벤트 → ④신청폼 → ⑤불안 해소
+-->
+<section id="tpf-landing">
+<style>
+#tpf-landing{container-type:inline-size;font-family:Pretendard,sans-serif;background:#0B1B3F;color:#fff;word-break:keep-all}
+#tpf-landing .wrap{max-width:720px;margin:0 auto;padding:10cqw 6cqw}
+#tpf-landing .eyebrow{display:inline-block;background:#FFD400;color:#0B1B3F;font-weight:800;border-radius:999px;padding:.4em 1em;font-size:clamp(13px,3.2cqw,16px)}
+#tpf-landing h1{font-size:clamp(30px,8.4cqw,52px);line-height:1.22;margin:.6em 0 .4em;letter-spacing:-.02em}
+#tpf-landing h2{font-size:clamp(22px,6cqw,34px);line-height:1.3;margin:0 0 .6em;letter-spacing:-.02em}
+#tpf-landing .lead{color:#A9BCE6;font-size:clamp(16px,4.2cqw,20px);line-height:1.6;margin:0 0 6cqw}
+#tpf-landing .cta{display:block;text-align:center;background:#FFD400;color:#0B1B3F;font-weight:900;font-size:clamp(18px,5cqw,22px);padding:1.1em;border-radius:14px;text-decoration:none;border:0;width:100%;box-sizing:border-box;cursor:pointer;animation:tpf-landing-pulse 1.8s ease-in-out infinite}
+#tpf-landing .points{list-style:none;padding:0;margin:0;display:grid;gap:3cqw}
+#tpf-landing .points li{background:#132B63;border-radius:16px;padding:5cqw;font-size:clamp(15px,4cqw,19px);line-height:1.5}
+#tpf-landing .points b{color:#FFD400;display:block;margin-bottom:.3em}
+#tpf-landing .event{background:#fff;color:#0B1B3F}
+#tpf-landing .event .tag{display:inline-block;background:#0B1B3F;color:#FFD400;font-weight:800;border-radius:8px;padding:.3em .7em;font-size:14px;margin-bottom:.8em}
+#tpf-landing .event .deadline{color:#c0392b;font-weight:800;margin:0 0 1em}
+#tpf-landing .event .deadline:empty{display:none}
+#tpf-landing .benefits{list-style:none;padding:0;margin:0 0 6cqw;display:grid;gap:2.4cqw}
+#tpf-landing .benefits li{border:2px solid #0B1B3F;border-radius:14px;padding:4cqw;font-weight:700;font-size:clamp(15px,4cqw,18px)}
+#tpf-landing .benefits li::before{content:"✓ ";color:#14845b}
+#tpf-landing .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:2cqw;margin:0 0 6cqw;padding:0;list-style:none;counter-reset:s}
+#tpf-landing .steps li{counter-increment:s;background:#f1f4fb;border-radius:12px;padding:3.4cqw;font-size:clamp(13px,3.4cqw,15px);text-align:center}
+#tpf-landing .steps li::before{content:counter(s);display:block;font-weight:900;font-size:1.6em;color:#1739a6}
+#tpf-landing form{display:grid;gap:10px;background:#f1f4fb;border-radius:18px;padding:5cqw}
+#tpf-landing form h3{margin:0 0 4px;font-size:clamp(18px,5cqw,22px)}
+#tpf-landing input[type=text],#tpf-landing input[type=tel]{font:inherit;padding:14px;border:1px solid #ccd3e6;border-radius:10px;font-size:16px}
+#tpf-landing .agree{font-size:13px;color:#4a5578;display:flex;gap:8px;align-items:flex-start}
+#tpf-landing .hp{position:absolute;left:-9999px}
+#tpf-landing .msg{font-weight:700;color:#14845b;min-height:1.2em;margin:0}
+#tpf-landing .effort{text-align:center;color:#4a5578;font-size:14px;margin:0}
+#tpf-landing .qa{background:#132B63;border-radius:14px;padding:4.4cqw;margin-bottom:3cqw}
+#tpf-landing .qa b{display:block;margin-bottom:.4em;color:#FFD400}
+#tpf-landing .qa span{color:#d6def5;line-height:1.6;font-size:clamp(14px,3.8cqw,17px)}
+#tpf-landing .note{color:#7d8fb8;font-size:12px;line-height:1.6;margin-top:6cqw}
+@keyframes tpf-landing-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.02)}}
+</style>
+
+<!-- ① 영상과 같은 훅 -->
+<div class="wrap">
+  <span class="eyebrow" data-slot="hero_eyebrow" data-max="16" data-label="상단 배지(영상 주제)">오늘의 정책자금</span>
+  <h1 data-slot="hero_title" data-max="30" data-label="메인 헤드라인(영상 훅과 같은 단어)">제조업 대표님,<br>올해 정책자금 아직 안 받으셨나요?</h1>
+  <p class="lead" data-slot="hero_lead" data-max="70" data-label="서브 문구(영상→랜딩 연결 문장)">영상에서 본 그 자금, 내 사업장도 해당되는지 조건부터 확인해 보세요. 연매출 5억 이상이면 검토 대상입니다.</p>
+  <a class="cta" href="#apply" data-cta data-slot="cta_label" data-max="16" data-label="버튼 문구">내 조건 무료 확인하기</a>
+</div>
+
+<!-- ② 핵심 3가지: 얼마 / 누가 / 언제까지 -->
+<div class="wrap" style="padding-top:0">
+  <ul class="points">
+    <li><b data-slot="point1_title" data-max="14" data-label="포인트1 제목(얼마)">지원 규모</b><span data-slot="point1_body" data-max="44" data-label="포인트1 설명">공고별 한도와 금리를 내 사업장 기준으로 비교해 드립니다.</span></li>
+    <li><b data-slot="point2_title" data-max="14" data-label="포인트2 제목(누가)">신청 자격</b><span data-slot="point2_body" data-max="44" data-label="포인트2 설명">업력·매출·업종 기준에 맞는지 먼저 점검합니다.</span></li>
+    <li><b data-slot="point3_title" data-max="14" data-label="포인트3 제목(언제까지)">접수 일정</b><span data-slot="point3_body" data-max="44" data-label="포인트3 설명">접수 기간과 필요한 서류를 놓치지 않게 알려드립니다.</span></li>
+  </ul>
+</div>
+
+<!-- ③ 이벤트 + ④ 신청폼 -->
+<div class="event" id="apply">
+  <div class="wrap">
+    <span class="tag">EVENT</span>
+    <h2 data-slot="event_title" data-max="20" data-label="이벤트명">정책자금 자격 무료 진단</h2>
+    <p class="deadline" data-slot="event_deadline" data-max="24" data-label="마감 문구(실제 공고 마감, 없으면 공백)"></p>
+    <p style="margin:0 0 1.2em;line-height:1.6;font-size:clamp(15px,4cqw,18px)" data-slot="event_desc" data-max="60" data-label="이벤트 설명(주력 혜택)">전화 10분이면 내 사업장으로 신청 가능한 자금과 예상 조건을 정리해 드립니다.</p>
+    <ul class="benefits">
+      <li data-slot="benefit1" data-max="26" data-label="혜택1">신청 가능 자금 자격 진단</li>
+      <li data-slot="benefit2" data-max="26" data-label="혜택2">접수 마감 일정 알림</li>
+      <li data-slot="benefit3" data-max="26" data-label="혜택3">필요 서류 체크리스트 제공</li>
+    </ul>
+    <ol class="steps">
+      <li data-slot="step1" data-max="12" data-label="진행1">간편 신청</li>
+      <li data-slot="step2" data-max="12" data-label="진행2">전화 진단</li>
+      <li data-slot="step3" data-max="12" data-label="진행3">결과 안내</li>
+    </ol>
+    <form data-tpf-form data-done="신청이 접수되었습니다. 영업일 기준 1일 안에 연락드리겠습니다.">
+      <h3 data-slot="form_title" data-max="18" data-label="신청폼 제목">30초 간편 신청</h3>
+      <input type="text" name="name" placeholder="대표자 성함" required maxlength="40" autocomplete="name">
+      <input type="tel" name="phone" placeholder="연락처 (숫자만)" required inputmode="numeric" maxlength="13" autocomplete="tel">
+      <input type="text" name="company" placeholder="업체명 · 업종 (선택)" maxlength="60">
+      <input type="text" name="website" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+      <label class="agree"><input type="checkbox" name="consent" value="1" required><span>[필수] 상담을 위한 개인정보(성함·연락처·업체명) 수집·이용에 동의합니다. 보유기간: 상담 종료 후 1년.</span></label>
+      <button type="submit" class="cta" data-cta data-slot="form_button" data-max="16" data-label="신청 버튼 문구">무료 진단 신청하기</button>
+      <p class="effort" data-slot="form_effort" data-max="24" data-label="신청 부담 안내(시간·비용)">전화 10분 · 비용 없음</p>
+      <p class="msg" data-tpf-msg role="status"></p>
+    </form>
+  </div>
+</div>
+
+<!-- ⑤ 불안 해소 -->
+<div class="wrap">
+  <h2 data-slot="qa_title" data-max="20" data-label="Q&A 제목">신청 전에 많이 묻는 질문</h2>
+  <div class="qa"><b data-slot="qa1_q" data-max="28" data-label="질문1">비용이 드나요?</b><span data-slot="qa1_a" data-max="70" data-label="답변1">자격 진단과 일정 안내는 무료입니다. 진단 결과를 보고 진행 여부를 직접 결정하시면 됩니다.</span></div>
+  <div class="qa"><b data-slot="qa2_q" data-max="28" data-label="질문2">신청하면 무조건 받을 수 있나요?</b><span data-slot="qa2_a" data-max="70" data-label="답변2">아닙니다. 승인 여부와 한도는 기관 심사로 결정됩니다. 신청 전에 조건이 맞는지 먼저 확인해 드립니다.</span></div>
+  <a class="cta" href="#apply" data-cta data-slot="cta_label2" data-max="16" data-label="하단 버튼 문구">내 조건 무료 확인하기</a>
+  <p class="note" data-slot="disclaimer" data-max="110" data-label="유의사항">정책자금은 각 기관의 심사에 따라 승인 여부·한도·금리가 결정됩니다. 본 페이지는 신청 상담을 위한 안내이며 대출 승인을 보장하지 않습니다.</p>
+</div>
+</section>
+<!-- 자체 도메인에 올릴 때는 여기에 <script src="https://사이트/sync.js" defer></script> 추가 (/l/슬러그 로 서비스될 때는 자동 삽입) -->
+</body>
+</html>
