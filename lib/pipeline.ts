@@ -5,7 +5,9 @@ import { charLen, parseSlots, validate } from './landing';
 import { getSop, type Sop } from './sop';
 import { getOutput, getSettings } from './settings';
 import { notify } from './notify';
-import { learnCounts, recordEditExemplar } from './learn';
+import { fewShotBlock, judgeCandidates, learnCounts, recordEditExemplar } from './learn';
+import { exportNow, exportRun } from './export';
+import { sopHash } from './sop';
 export { getOutput, getSettings };
 import { STEP_DEFS, STEP_KEYS, downstream, stepDef, type StepKey } from './steps';
 import type { Settings, StepRow } from './types';
@@ -139,8 +141,8 @@ export function lint(step: StepKey, out: any, c: any, s: Settings, extra: { slot
 const hasError = (c: Check[]) => c.some((x) => x.level === 'error');
 
 // ── 생성: 준비(prepare) → LLM 또는 에이전트 → 마무리(finalize) ─────────
-type Prep = { system: string; prompt: string; webSearch: boolean; maxTokens: number; slots?: any[]; tpl?: any };
-type Gen = { output: any; notes: any; usage: Usage; slots?: any[]; provider?: string; model?: string; tried?: any[] };
+type Prep = { system: string; prompt: string; webSearch: boolean; maxTokens: number; slots?: any[]; tpl?: any; refs?: number[] };
+type Gen = { output: any; notes: any; usage: Usage; slots?: any[]; provider?: string; model?: string; tried?: any[]; input?: { system: string; prompt: string }; candidates?: number; pred_score?: number | null; judge?: any; refs?: number[] };
 
 /** 이 단계에서 모델(또는 에이전트)이 받을 지시문 전체 */
 async function prepare(step: StepKey, c: any, s: Settings, sop: Sop, feedback?: string | null): Promise<Prep> {
@@ -162,6 +164,12 @@ async function prepare(step: StepKey, c: any, s: Settings, sop: Sop, feedback?: 
   }
   prep.system = buildSystem(s, step, sop);
   prep.prompt = USER[step](ctx);
+  // 점수 기반 최적화 ①: 운영자가 높은 점수를 준 예시와 낮은 점수 이유를 참고로 주입
+  try {
+    const fs = await fewShotBlock(step, c.id, s);
+    prep.prompt += fs.text;
+    prep.refs = fs.ids;
+  } catch { /* 예시 없음 */ }
   return prep;
 }
 
@@ -224,13 +232,34 @@ async function finalize(step: StepKey, c: any, s: Settings, raw: any, prep: Prep
 
 async function generate(step: StepKey, c: any, s: Settings, sop: Sop, feedback?: string | null, prefer?: string | null): Promise<Gen> {
   const prep = await prepare(step, c, s, sop, feedback);
-  const res = await ask<any>({
+  const req = {
     system: prep.system, prompt: prep.prompt, webSearch: prep.webSearch, maxTokens: prep.maxTokens,
     mcp: step === 'research' ? s.mcp_servers : undefined,
     chain: s.llm_chain, prefer: prefer || sop.provider,
-  });
+  };
+  // 점수 기반 최적화 ②: 후보 N개(SOP 의 best_of) → 운영자 채점 기준으로 점수 예측 → 최고 선택
+  const n = Math.max(1, Math.min(4, Number(sop.best_of || 1)));
+  const settled = await Promise.allSettled(Array.from({ length: n }, () => ask<any>(req)));
+  const ok = settled.filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled').map((r) => r.value);
+  if (!ok.length) throw (settled[0] as PromiseRejectedResult).reason;
+  let usage = ok.reduce((u: Usage, r: any) => add(u, r.usage), { input: 0, output: 0 });
+  let pick = 0;
+  let judge: any = null;
+  if (ok.length > 1) {
+    try {
+      judge = await judgeCandidates(step, ok.map((r: any) => { const d = { ...r.data }; delete d._ai; return d; }), s, sop.content);
+      usage = add(usage, judge.usage);
+      pick = judge.best;
+    } catch { /* 채점 실패 → 첫 후보 */ }
+  }
+  const res = ok[pick];
   const gen = await finalize(step, c, s, res.data, prep);
-  return { ...gen, usage: add(gen.usage, res.usage), provider: res.provider, model: res.model, tried: res.tried };
+  const pred = judge?.scores?.find((x: any) => x.i === pick)?.score ?? null;
+  return {
+    ...gen, usage: add(gen.usage, usage), provider: res.provider, model: res.model, tried: res.tried,
+    input: { system: prep.system, prompt: prep.prompt }, candidates: ok.length, pred_score: pred,
+    judge: judge ? { best: pick, scores: judge.scores } : null, refs: prep.refs,
+  };
 }
 
 // ── AI 검수 ─────────────────────────────────────────────────────────
@@ -295,8 +324,10 @@ async function settle(step: StepKey, contentId: string, row: StepRow, s: Setting
   await setStep(contentId, step, {
     state, decided_by: decidedBy, decided_at: decidedBy ? t : null,
     decision_note: decidedBy === 'ai' ? aiReview?.summary ?? null : null,
-    ai_notes: gen.notes, ai_review: aiReview, checks, feedback: null, finished_at: t, ai_output: gen.output ?? null,
+    ai_notes: gen.judge ? { ...(gen.notes || {}), judge: gen.judge } : gen.notes, ai_review: aiReview, checks, feedback: null, finished_at: t, ai_output: gen.output ?? null,
     provider: gen.provider ?? null, model: gen.model ?? null,
+    ai_input: gen.input ?? null, sop_hash: sopHash(sop.content), freedom: sop.freedom, candidates: gen.candidates ?? 1, refs: gen.refs ?? null,
+    pred_score: gen.pred_score ?? (aiReview?.score != null ? Math.round((Number(aiReview.score) / 20) * 10) / 10 : null),
     attempts: row.attempts + 1 + extra,
     work_ms: Number(row.work_ms) + (Date.now() - t0),
     input_tokens: Number(row.input_tokens) + usage.input,
@@ -306,6 +337,7 @@ async function settle(step: StepKey, contentId: string, row: StepRow, s: Setting
   await syncCurrent(contentId);
   await log(contentId, step, 'done', `${gen.provider || '-'} · ${state === 'approved' ? `승인(${decidedBy})` : '검수 대기'}`);
   await notify(state === 'approved' ? 'step_done' : 'step_review', { contentId, step });
+  await exportNow(() => exportRun(contentId, step));
   return { step, state, decided_by: decidedBy, provider: gen.provider, model: gen.model, checks, ai_review: aiReview };
 }
 
@@ -334,6 +366,7 @@ export async function runStep(step: StepKey, contentId: string, opts: { feedback
     await sbAdmin().from('contents').update({ error: `[${step}] ${e.message}` }).eq('id', contentId);
     await log(contentId, step, 'failed', e.message);
     await notify('step_failed', { contentId, step, message: e.message });
+    await exportNow(() => exportRun(contentId, step, e.message));
     throw e;
   }
 }
@@ -368,7 +401,7 @@ export async function stepSubmit(step: StepKey, contentId: string, output: any, 
   const t0 = Date.now();
   const prep = await prepare(step, c, s, sop, null);
   const gen = await finalize(step, c, s, output, prep);
-  return settle(step, contentId, row, s, sop, { ...gen, provider: `agent:${String(agent).slice(0, 30)}`, model: undefined }, t0);
+  return settle(step, contentId, row, s, sop, { ...gen, provider: `agent:${String(agent).slice(0, 30)}`, model: undefined, input: { system: prep.system, prompt: prep.prompt }, refs: prep.refs }, t0);
 }
 
 // ── 결정: 사람 승인/반려 ────────────────────────────────────────────
@@ -395,6 +428,7 @@ export async function decide(step: StepKey, contentId: string, decision: 'approv
   if (decision === 'approve' && by === 'human' && stepDef(step).kind === 'ai') {
     learned = await recordEditExemplar(step, contentId, row.ai_output, note).catch(() => false);
   }
+  await exportNow(() => exportRun(contentId, step));
   const lc = learned ? await learnCounts(step).catch(() => null) : null;
   return { step, state: decision === 'approve' ? 'approved' : 'rejected', learned_edit: learned, should_propose: !!lc?.should_propose };
 }

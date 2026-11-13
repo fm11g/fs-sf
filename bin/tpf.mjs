@@ -44,14 +44,21 @@ const HELP = `tpf <명령> [인자] [--옵션]
   submit <id> <step> <file.json> [--agent codex]   만든 JSON 제출
   set-output <id> <step> <file.json> 산출물 직접 교체
 
-SOP 학습 (좋은 결과물 → SOP 보완)
-  good <id> <step> [--note "좋은 이유"]     👍 좋은 예로 저장
-  bad <id> <step> --note "아쉬운 점"        👎 아쉬운 예로 저장
+평가 · SOP 학습 (점수 → 생성 최적화 · SOP 보완)
+  rate <id> <step> <1-5> [--tags 훅강함,숫자명확] [--note "이유"]   결과물 평가 (같은 산출물이면 갱신)
+  tags <step>                              평가 태그 후보
+  good <id> <step> [--note …] | bad <id> <step> --note …   (이전 방식: 4점 / 2점)
+  notes <step>                             지금까지의 학습 노트 (md)
+  consolidate <step> [--instruction "…"] [--force]   누적 학습으로 SOP 전체 재정리안
   learn [step]                             학습 재료 현황 (step 없으면 전체)
   learn <step> --propose [--force]         지금 SOP 보완 제안 만들기
   proposals [step] [--status pending]      제안 목록
   proposal apply <pid> [--only 0,2] [--note …]   선택 반영 (번호는 0부터)
   proposal reject <pid> [--note …] | proposal revert <pid>
+  proposal apply <pid> [--file 다듬은.md] [--force]   (재정리안)
+
+데이터 내보내기 (GitHub data 브랜치 · 구글 시트)
+  export status | export flush | export rebuild
 
 SOP
   sop list | sop get <step> | sop set <step> [--file f.md] [--freedom 0-3] [--gate manual|ai|auto] [--provider auto|claude|openai|oss] [--note "…"]
@@ -130,13 +137,23 @@ async function main() {
       if (r.should_propose) console.log(`→ 학습 재료가 충분합니다: tpf learn ${a2} --propose`);
       return;
     }
+    case 'rate': {
+      const r = await call('output_rate', { content_id: await id(a1), step: need(a2, 'step'), score: Number(need(a3, '점수 1~5')), ...(flags.tags ? { tags: String(flags.tags).split(',') } : {}), note: flags.note || '' });
+      out({ saved: r.exemplar?.id, score: r.exemplar?.score, tags: r.exemplar?.tags, updated: r.updated, counts: r.counts, should_propose: r.should_propose });
+      if (r.should_propose) console.log(`→ 학습 재료가 충분합니다: tpf learn ${a2} --propose`);
+      return;
+    }
+    case 'tags': return out(await call('rating_tags', { step: need(a1, 'step') }));
+    case 'notes': return out(await call('learning_notes', { step: need(a1, 'step') }));
+    case 'consolidate': return out(await call('sop_consolidate', { step: need(a1, 'step'), ...(flags.instruction ? { instruction: flags.instruction } : {}), force: !!flags.force }));
+    case 'export': return out(await call('data_export', { action: a1 || 'status' }));
     case 'learn':
       if (a1 && flags.propose) return out(await call('sop_learn_propose', { step: a1, force: !!flags.force }));
       return out(await call('sop_learn_status', a1 ? { step: a1 } : {}));
     case 'proposals': return out(await call('sop_proposals', { ...(a1 ? { step: a1 } : {}), ...(flags.status ? { status: flags.status } : {}) }));
     case 'proposal': {
       const pid = Number(need(a2, '제안 번호'));
-      if (a1 === 'apply') return out(await call('sop_proposal_decide', { id: pid, decision: 'apply', ...(flags.only ? { selected: String(flags.only).split(',').map(Number) } : {}), note: flags.note || 'CLI' }));
+      if (a1 === 'apply') return out(await call('sop_proposal_decide', { id: pid, decision: 'apply', ...(flags.only ? { selected: String(flags.only).split(',').map(Number) } : {}), ...(flags.file ? { content: fs.readFileSync(flags.file, 'utf8') } : {}), force: !!flags.force, note: flags.note || 'CLI' }));
       if (a1 === 'reject' || a1 === 'revert') return out(await call('sop_proposal_decide', { id: pid, decision: a1, note: flags.note || '' }));
       break;
     }

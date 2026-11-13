@@ -1,16 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth';
-import { markExemplar } from '@/lib/learn';
+import { rateOutput } from '@/lib/learn';
 import { sbAdmin } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 
-/** 좋은 예/아쉬운 예 저장 { contentId, step, kind: good|bad, note? } → should_propose 면 학습 제안을 만들 때 */
+/** 평가 저장 { contentId, step, score: 1~5, tags?: string[], note? } (이전 형식 kind: good|bad 도 허용 → 4/2점) */
 export async function POST(req: NextRequest) {
   const deny = await requireAdmin(req);
   if (deny) return deny;
-  const { contentId, step, kind = 'good', note, source } = await req.json();
-  try { return NextResponse.json(await markExemplar(step, contentId, kind === 'bad' ? 'bad' : 'good', note || '', source || 'human')); }
+  const { contentId, step, score, kind, tags, note, source } = await req.json();
+  const sc = score ?? (kind === 'bad' ? 2 : 4);
+  try { return NextResponse.json(await rateOutput(step, contentId, { score: sc, tags, note: note || '', source: source || 'human' })); }
   catch (e: any) { return NextResponse.json({ error: e.message }, { status: 400 }); }
 }
 
@@ -20,7 +21,7 @@ export async function GET(req: NextRequest) {
   if (deny) return deny;
   const step = req.nextUrl.searchParams.get('step');
   const contentId = req.nextUrl.searchParams.get('contentId');
-  let q = sbAdmin().from('exemplars').select('id, content_id, step, kind, note, topic, source, used_in, created_at').order('created_at', { ascending: false }).limit(100);
+  let q = sbAdmin().from('exemplars').select('id, content_id, step, kind, score, tags, features, note, topic, source, used_in, github_path, provider, created_at').order('created_at', { ascending: false }).limit(100);
   if (step) q = q.eq('step', step);
   if (contentId) q = q.eq('content_id', contentId);
   const { data } = await q;

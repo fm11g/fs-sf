@@ -6,7 +6,9 @@
 - 단계마다 **SOP(md)** 가 있어 AI가 무엇에 집중할지, 얼마나 자유롭게 일할지(자유도 0~3), 누가 결정할지를 관리자에서 언제든 바꿉니다.
 - **현황판**(어느 콘텐츠가 어느 단계에서 무엇을 기다리는지)과 **작업 효율**(단계별 작업·대기 시간, 재작업률, AI 결정 비율, 비용, 조회→신청 전환)을 제공합니다.
 - **API + MCP 서버 + CLI**로 Claude Code · Codex · 그 밖의 에이전트에서 같은 스킬로 공장을 조작합니다.
-- 작업 중 내가 고른 **좋은 결과물(👍·직접 고친 것·성과)에서 패턴을 찾아 기존 SOP 를 줄 단위로 보완**합니다. 제안만 받거나 자동 반영하거나, 변경별로 골라·고쳐 반영하고 되돌릴 수 있습니다.
+- 결과물마다 **1~5점과 태그**를 매기고, 모든 결과물·중간 데이터를 점수·등급·특징 태그로 나눠 **GitHub(data 브랜치)와 구글 시트**에 저장합니다.
+- 점수로 결과물을 최적화합니다: 고득점 예시를 생성에 참고로 넣고, 후보 여러 개 중 내 채점 기준으로 가장 높게 예측된 것을 고릅니다.
+- **지금까지의 학습(학습 노트)**을 읽고 SOP md 를 줄 단위로 보완하거나 전체를 다시 정리합니다. 제안만 받거나 자동 반영하거나, 변경별로 골라·고쳐 반영하고 되돌릴 수 있습니다.
 - 단계가 끝날 때마다 **입력한 이메일로 일의 흐름과 정리된 내용**을 보내고, 매일 18시에 하루 요약을 보냅니다.
 - 서버 AI는 **Claude → OpenAI → 오픈소스 모델** 순으로 자동 전환되고, 전부 안 되면 **에이전트가 직접 작성해 제출**하는 경로가 있습니다.
 
@@ -35,7 +37,11 @@ app/(site)/, app/l/   공개 사이트(SEO 정보글) · 랜딩 서빙
 lib/steps.ts          공정 정의(순서·의존 관계) ← 단계를 추가/변경할 때 여기부터
 lib/pipeline.ts       생성 → 규칙 검사 → 결정 방식 적용 → 하위 단계 무효화
 lib/prompts.ts        단계별 출력 형식(JSON 스키마). SOP md 는 여기에 주입됨
-lib/learn.ts          좋은 결과물 → SOP 학습 제안·반영·되돌리기 (lib/sop-merge.ts: 줄 단위 적용)
+lib/tags.ts           점수·등급·태그·특징 추출 (순수)
+lib/learn.ts          평가 · 참고 예시 주입 · 후보 채점 · SOP 보완/재정리·반영·되돌리기 (lib/sop-merge.ts)
+lib/learn-data.ts     지금까지의 학습 원자료 → lib/learn-notes.ts 학습 노트 md
+lib/export.ts         GitHub data 브랜치(lib/github-data.ts) · 구글 시트(lib/sheets.ts) 내보내기 큐·데이터셋
+integrations/google-sheets/Code.gs   시트 수신용 Apps Script
 lib/notify.ts         이메일 알림 (lib/email.ts: 발송·템플릿) · vercel.json 크론(매일 18시 요약)
 lib/llm.ts            AI 제공자 전환 (claude → openai → oss) · 외부 검색 주입
 lib/sop.ts, sop/*.md  SOP 로딩·저장·GitHub 커밋 / 단계별 SOP 기본값
@@ -45,7 +51,7 @@ AGENTS.md, CLAUDE.md  에이전트 공통 지침 (Codex 등 / Claude Code)
 bin/tpf.mjs           공장 CLI — MCP가 없는 에이전트도 같은 명령으로 조작
 landing/template.html 신청 유도형 랜딩 샘플(슬롯 30개 + 신청폼)
 worker/               렌더·업로드 워커 (video/Short.tsx = 모션그래픽)
-supabase/migrations/  001 → 002 → 003 → 004_learning_notify.sql 순서로 실행
+supabase/migrations/  001 → 002 → 003 → 004 → 005_scores_export.sql 순서로 실행
 docs/                 SETUP · OPERATIONS(운영 SOP) · API-MCP
 ```
 
@@ -53,6 +59,7 @@ docs/                 SETUP · OPERATIONS(운영 SOP) · API-MCP
 
 - [docs/SETUP.md](docs/SETUP.md) — 설치 (Supabase → GitHub → Vercel → 채널 연결), 30분
 - [docs/OPERATIONS.md](docs/OPERATIONS.md) — 매일 운영하는 법, 결정 방식·자유도 조정 기준, 성과를 SOP에 반영하는 법
+- [docs/DATA-SCORES.md](docs/DATA-SCORES.md) — 점수·태그, GitHub·구글 시트 데이터 저장, 점수 기반 결과물·SOP 최적화
 - [docs/LEARNING-NOTIFY.md](docs/LEARNING-NOTIFY.md) — 좋은 결과물로 SOP 자동 보완, 수동 조절, 이메일 알림 설정과 내용
 - [docs/AGENTS-SKILLS.md](docs/AGENTS-SKILLS.md) — Claude Code·Codex·오픈소스 에이전트 연결, 스킬 사용법, AI 제공자 전환, API 키 없이 진행하는 법
 - [docs/API-MCP.md](docs/API-MCP.md) — REST API와 MCP 도구 목록, Claude 연결 방법

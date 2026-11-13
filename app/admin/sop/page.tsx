@@ -31,7 +31,7 @@ export default function SopPage() {
   const def = STEP_DEFS.find((d) => d.key === sel)!;
   const save = async () => {
     setBusy(true);
-    try { await api('/api/sop', { action: 'save', step: sel, content: draft.content, freedom: draft.freedom, gate: draft.gate, provider: draft.provider || 'auto', note }); setNote(''); await load(sel); }
+    try { await api('/api/sop', { action: 'save', step: sel, content: draft.content, freedom: draft.freedom, gate: draft.gate, provider: draft.provider || 'auto', best_of: draft.best_of || 1, note }); setNote(''); await load(sel); }
     catch (e: any) { alert(e.message); } finally { setBusy(false); }
   };
   const commit = async () => {
@@ -51,7 +51,7 @@ export default function SopPage() {
             return (
               <button key={d.key} className={`rail-item ${sel === d.key ? 'on' : ''}`} style={{ gridTemplateColumns: '1fr auto auto' }} onClick={() => pick(d.key)}>
                 <span><b>{d.no}</b> {d.label}</span>
-                <span className="mute">자유 {s?.freedom}{lc[d.key]?.pending_proposals ? <b style={{ color: '#6b21a8' }}> · 제안</b> : lc[d.key]?.counts?.unused_signal ? ` · 👍${lc[d.key].counts.unused_signal}` : ''}</span>
+                <span className="mute">{lc[d.key]?.counts?.avg != null ? `★${lc[d.key].counts.avg} · ` : ''}자유 {s?.freedom}{lc[d.key]?.pending_proposals ? <b style={{ color: '#6b21a8' }}> · 제안</b> : lc[d.key]?.counts?.unused_signal ? ` · 재료${lc[d.key].counts.unused_signal}` : ''}</span>
                 <span title={GATE_KO[s?.gate]}>{s?.gate === 'ai' ? '🤖' : s?.gate === 'auto' ? '⏩' : '👤'}</span>
               </button>
             );
@@ -85,6 +85,13 @@ export default function SopPage() {
                 <span style={{ width: 80 }}>AI 제공자</span>
                 <div className="seg">{([['auto', '자동(전환 순서)'], ['claude', 'Claude'], ['openai', 'OpenAI'], ['oss', '오픈소스']] as const).map(([k, l]) => <button key={k} className={(draft.provider || 'auto') === k ? 'on' : ''} onClick={() => setDraft({ ...draft, provider: k })}>{l}</button>)}</div>
                 <span className="mute">지정한 제공자가 실패하면 설정의 전환 순서대로 넘어갑니다</span>
+              </div>
+            )}
+            {def.kind === 'ai' && (
+              <div className="row" style={{ marginBottom: 10 }}>
+                <span style={{ width: 80 }}>후보 수</span>
+                <div className="seg">{[1, 2, 3, 4].map((n) => <button key={n} className={(draft.best_of || 1) === n ? 'on' : ''} onClick={() => setDraft({ ...draft, best_of: n })}>{n}</button>)}</div>
+                <span className="mute">2 이상이면 후보를 여러 개 만들어 내 채점 기준으로 점수를 예측해 가장 높은 것을 고릅니다 (비용 ×후보 수)</span>
               </div>
             )}
             <textarea style={{ minHeight: 460, fontSize: 13, lineHeight: 1.6 }} value={draft.content} onChange={(e) => setDraft({ ...draft, content: e.target.value })} />

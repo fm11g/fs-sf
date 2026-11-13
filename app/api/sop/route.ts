@@ -16,10 +16,10 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const deny = await requireAdmin(req);
   if (deny) return deny;
-  const { action = 'save', step, content, freedom, gate, provider, note } = await req.json();
+  const { action = 'save', step, content, freedom, gate, provider, best_of, note } = await req.json();
   if (!STEP_KEYS.includes(step)) return NextResponse.json({ error: '알 수 없는 단계' }, { status: 400 });
   try {
-    if (action === 'save') return NextResponse.json(await saveSop(step as StepKey, { content, freedom, gate, provider }, note));
+    if (action === 'save') return NextResponse.json(await saveSop(step as StepKey, { content, freedom, gate, provider, best_of }, note));
     if (action === 'default') return NextResponse.json(defaultSop(step as StepKey));
     if (action === 'commit') return NextResponse.json({ url: await commitSopToGithub(step as StepKey, (await getSop(step as StepKey)).content) });
     if (action === 'versions') {

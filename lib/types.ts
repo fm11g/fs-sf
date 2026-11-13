@@ -20,6 +20,15 @@ export type Settings = {
   learn_mode: 'off' | 'propose' | 'auto';
   learn_min: number;
   learn_from_edits: boolean;
+  export_github: boolean;
+  github_data_repo: string;
+  github_data_branch: string;
+  export_sheets: boolean;
+  sheets_id: string;
+  sheets_webhook: string;
+  sheets_secret: string;
+  fewshot_k: number;
+  fewshot_min_score: number;
 };
 
 export type ScriptScene = { id: string; narration: string; captions: string[] };
@@ -75,7 +84,8 @@ export type StepState = 'pending' | 'running' | 'review' | 'approved' | 'rejecte
 export type StepRow = {
   content_id: string; step: string; state: StepState; attempts: number;
   decided_by: string | null; decision_note: string | null; feedback: string | null;
-  ai_notes: any; ai_review: any; ai_output?: any; checks: { level: 'error' | 'warn' | 'ok'; msg: string }[];
+  ai_notes: any; ai_review: any; ai_output?: any; ai_input?: any;
+  sop_hash?: string | null; freedom?: number | null; candidates?: number | null; pred_score?: number | null; refs?: number[] | null; checks: { level: 'error' | 'warn' | 'ok'; msg: string }[];
   started_at: string | null; finished_at: string | null; decided_at: string | null;
   provider: string | null; model: string | null;
   work_ms: number; wait_ms: number; input_tokens: number; output_tokens: number; updated_at: string;

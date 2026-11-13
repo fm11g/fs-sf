@@ -18,7 +18,7 @@ description: 오늘의 정책자금 숏폼 1편을 조사부터 렌더 직전까
    - 승인 → `tpf approve <id> <step>` 후 2번으로
    - 수정 지시 → `tpf run <id> <step> --feedback "지시 그대로"` (이전 산출물을 그 지시대로 고친다)
    - 반려 → `tpf reject <id> <step> --note "사유"`
-   - "이거 좋다" → 승인과 함께 `tpf good <id> <step> --note "좋은 이유"` (SOP 학습 재료, `tpf-learn`)
+   - 평가를 말하면("이거 5점", "좋다") → `tpf rate <id> <step> <점수> --tags … --note "이유"` 후 승인 (`tpf-learn`)
 4. 서버 AI가 모두 실패하면(`모든 AI 제공자 실패`, `사용 가능한 AI 제공자가 없습니다`) → `tpf-step-local` 스킬로 그 단계를 직접 작성해 제출한다.
 
 ## 검수 보고 형식 (단계마다 3~6줄)

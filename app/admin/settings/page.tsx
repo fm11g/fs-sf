@@ -29,12 +29,14 @@ export default function SettingsPage() {
   const [bgm, setBgm] = useState({ title: '', mood: 'hopeful' });
   const [prov, setProv] = useState<any>(null);
   const [notes, setNotes] = useState<any[]>([]);
+  const [exp, setExp] = useState<any>(null);
   const load = async () => {
     const { data } = await sb.from('settings').select('value').eq('id', 1).single();
     setV(data?.value || {});
     const { data: b } = await sb.from('bgm_tracks').select('*').order('created_at', { ascending: false });
     setBgms(b || []);
     fetch('/api/providers').then((r) => r.json()).then(setProv).catch(() => {});
+    fetch('/api/export').then((r) => r.json()).then(setExp).catch(() => {});
     sb.from('notifications').select('*').order('created_at', { ascending: false }).limit(15).then(({ data: n }) => setNotes(n || []));
   };
   useEffect(() => { load(); }, []);
@@ -105,17 +107,49 @@ export default function SettingsPage() {
       </div>
 
       <div className="card">
+        <h2>🗂 데이터 저장 · 내보내기 <span className="mute">모든 단계 결과물·중간 데이터·평가·SOP 변경</span></h2>
+        <p className="mute" style={{ marginTop: 0 }}>Supabase 는 운영용이고, 같은 데이터를 GitHub(학습 데이터 원본)와 구글 시트(보기·분석용)에 점수·등급·태그로 나눠 저장합니다. 실패한 전송은 남아서 매일 18시와 "지금 보내기"에서 다시 시도합니다.</p>
+        <h3 style={{ fontSize: 14, margin: '14px 0 6px' }}>GitHub</h3>
+        <div className="slot"><b>GitHub 에 저장</b><input type="checkbox" checked={v.export_github !== false} onChange={(e) => setV({ ...v, export_github: e.target.checked })} style={{ justifySelf: 'start' }} /><span /></div>
+        <div className="slot"><b>저장소 (owner/repo)</b><input placeholder="비우면 GITHUB_REPO 와 같은 저장소" value={v.github_data_repo || ''} onChange={(e) => setV({ ...v, github_data_repo: e.target.value.trim() })} /><span /></div>
+        <div className="slot"><b>브랜치</b><input value={v.github_data_branch || 'data'} onChange={(e) => setV({ ...v, github_data_branch: e.target.value.trim() })} /><span className="mute">코드와 분리</span></div>
+        {exp && <p className="mute">상태: {exp.github.ready ? '연결 정보 있음' : '토큰/저장소 없음'} · 완료 {exp.github.done} · 대기 {exp.github.pending} · 실패 {exp.github.failed} {exp.github.url && <> · <a href={exp.github.url} target="_blank">data 폴더 열기 ↗</a></>}</p>}
+        <h3 style={{ fontSize: 14, margin: '14px 0 6px' }}>구글 시트</h3>
+        <div className="slot"><b>시트로 보내기</b><input type="checkbox" checked={!!v.export_sheets} onChange={(e) => setV({ ...v, export_sheets: e.target.checked })} style={{ justifySelf: 'start' }} /><span /></div>
+        <div className="slot"><b>방식 A · 시트 ID</b><input placeholder="서비스 계정 방식 (Vercel 에 GOOGLE_SERVICE_ACCOUNT_JSON 필요)" value={v.sheets_id || ''} onChange={(e) => setV({ ...v, sheets_id: e.target.value.trim() })} /><span className="mute">URL 의 /d/ 뒤</span></div>
+        <div className="slot"><b>방식 B · Apps Script URL</b><input placeholder="https://script.google.com/macros/s/…/exec" value={v.sheets_webhook || ''} onChange={(e) => setV({ ...v, sheets_webhook: e.target.value.trim() })} /><span /></div>
+        <div className="slot"><b>시트 비밀값</b><input type="password" value={v.sheets_secret || ''} onChange={(e) => setV({ ...v, sheets_secret: e.target.value })} /><span className="mute">Code.gs 의 SECRET</span></div>
+        {exp && <p className="mute">상태: {exp.sheets.mode === 'service_account' ? '서비스 계정' : exp.sheets.mode === 'apps_script' ? 'Apps Script' : '미설정'} · 완료 {exp.sheets.done} · 대기 {exp.sheets.pending} · 실패 {exp.sheets.failed}. 탭: outputs(모든 실행) · ratings(평가) · sop_changes · performance(매일 성과)</p>}
+        {exp?.last_errors?.length > 0 && <details><summary className="mute">최근 실패 {exp.last_errors.length}건</summary><ul>{exp.last_errors.map((x: any, i: number) => <li key={i} className="mute">{x.target}: {x.error}</li>)}</ul></details>}
+        <h3 style={{ fontSize: 14, margin: '14px 0 6px' }}>점수 기반 최적화</h3>
+        <div className="slot"><b>참고 예시 수</b><input type="number" min={0} max={4} value={v.fewshot_k ?? 2} onChange={(e) => setV({ ...v, fewshot_k: Number(e.target.value) })} /><span className="mute">생성 때 넣는 고득점 예시 (0 = 끔)</span></div>
+        <div className="slot"><b>참고 최소 점수</b><input type="number" min={3} max={5} value={v.fewshot_min_score ?? 4} onChange={(e) => setV({ ...v, fewshot_min_score: Number(e.target.value) })} /><span className="mute">이 점수 이상만 참고</span></div>
+        <p className="mute">단계별 "후보 수"(여러 개 만들어 예측 점수 최고 선택)는 [SOP · AI 제어]에서 정합니다.</p>
+        <div className="row">
+          <button className="pri" onClick={save}>저장</button>
+          {(['test_github', 'test_sheets', 'flush', 'rebuild'] as const).map((a) => (
+            <button key={a} onClick={async () => {
+              const r = await fetch('/api/export', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: a }) }).then((x) => x.json());
+              alert(r.error ? `실패: ${r.error}` : a === 'flush' ? `보냄: GitHub ${r.github} · 시트 ${r.sheets}${r.errors?.length ? `\n오류: ${r.errors.join('\n')}` : ''}` : a === 'rebuild' ? `데이터셋 재생성: 파일 ${r.files}개${r.commit?.url ? `\n${r.commit.url}` : ''}` : a === 'test_github' ? `GitHub 연결 정상\n${r.url}` : `시트 연결 정상 (connection_test 탭)`);
+              fetch('/api/export').then((x) => x.json()).then(setExp);
+            }}>{{ test_github: 'GitHub 테스트', test_sheets: '시트 테스트', flush: '대기분 지금 보내기', rebuild: '데이터셋·학습 노트 재생성' }[a]}</button>
+          ))}
+          <span className="mute">저장 후 테스트하세요</span>
+        </div>
+      </div>
+
+      <div className="card">
         <h2>🧠 SOP 학습</h2>
         <div className="slot">
           <b>학습 방식</b>
           <select value={v.learn_mode || 'propose'} onChange={(e) => setV({ ...v, learn_mode: e.target.value })}>
             <option value="propose">제안만 — AI 가 보완안을 만들고 내가 골라 반영 (권장)</option>
-            <option value="auto">자동 — 추가·수정 중 근거 2개 이상인 안전한 변경은 바로 반영 (삭제·금지 항목은 제안으로)</option>
+            <option value="auto">자동 — 보완 제안 중 근거 2개 이상인 추가·수정은 바로 반영 (삭제·금지 항목·전체 재정리는 항상 제안으로)</option>
             <option value="off">끔 — 좋은 예만 모으고 제안하지 않음</option>
           </select>
           <span />
         </div>
-        <div className="slot"><b>제안 기준</b><input type="number" min={1} max={20} value={v.learn_min ?? 3} onChange={(e) => setV({ ...v, learn_min: Number(e.target.value) })} /><span className="mute">단계별 미반영 좋은/수정 예 개수</span></div>
+        <div className="slot"><b>제안 기준</b><input type="number" min={1} max={20} value={v.learn_min ?? 3} onChange={(e) => setV({ ...v, learn_min: Number(e.target.value) })} /><span className="mute">단계별 미반영 ★4 이상·수정 예 개수</span></div>
         <div className="slot"><b>수정 예 자동 수집</b><input type="checkbox" checked={v.learn_from_edits !== false} onChange={(e) => setV({ ...v, learn_from_edits: e.target.checked })} style={{ justifySelf: 'start' }} /><span className="mute">AI 산출물을 직접 고친 뒤 승인하면 차이를 학습</span></div>
         <p className="mute">조건을 채우면 👍 직후에, 그리고 매일 18시에 단계별 제안을 만듭니다. 반영 내용은 [SOP · AI 제어]의 변경 이력·학습 이력에 남고 되돌릴 수 있습니다.</p>
         <button className="pri" onClick={save}>저장</button>

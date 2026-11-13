@@ -136,3 +136,64 @@ export function sanitizeChanges(changes: any[], banned: string[]): SopChange[] {
 
 /** 자동 반영 모드에서 사람 확인 없이 적용해도 되는 변경 */
 export const isSafeAuto = (c: SopChange) => c.op !== 'remove' && c.section.replace(/\s/g, '') !== '금지' && (c.evidence?.length || 0) >= 2;
+
+// ── 전체 재정리(rewrite) 안전 검사 · 줄 비교 ─────────────────────────
+const sectionLines = (md: string, name: string) => {
+  const lines = md.replace(/\r\n/g, '\n').split('\n');
+  const s = lines.findIndex((l) => /^##\s/.test(l) && l.replace(/^##\s*/, '').replace(/\s/g, '') === name.replace(/\s/g, ''));
+  if (s < 0) return [] as string[];
+  const out: string[] = [];
+  for (let i = s + 1; i < lines.length && !/^#{1,2}\s/.test(lines[i]); i++) if (lines[i].trim()) out.push(lines[i]);
+  return out;
+};
+
+/**
+ * 재정리안 검사: 필수 섹션 유지 · 금지 항목 보존(빠지면 자동으로 되살림) · 금지 표현 차단 · 분량 경고
+ * 반환 content 는 보정된 md
+ */
+export function checkRewrite(base: string, next: string, banned: string[]) {
+  const warns: string[] = [];
+  let content = next.replace(/\r\n/g, '\n').trim() + '\n';
+  for (const b of banned) if (b && content.includes(b)) return { ok: false as const, content, warns: [`금지 표현 포함: "${b}"`] };
+  for (const sec of SECTIONS) {
+    if (sectionLines(base, sec).length && !new RegExp(`^##\\s*${sec}\\s*$`, 'm').test(content)) {
+      content += `\n## ${sec}\n${sectionLines(base, sec).join('\n')}\n`;
+      warns.push(`'${sec}' 섹션이 빠져 기존 내용으로 되살림`);
+    }
+  }
+  const nextBan = sectionLines(content, '금지').map(norm);
+  const lost = sectionLines(base, '금지').filter((l) => !nextBan.some((n) => n === norm(l) || (norm(l).length >= 8 && n.includes(norm(l)))));
+  if (lost.length) {
+    const lines = content.split('\n');
+    const at = lines.findIndex((l) => /^##\s*금지\s*$/.test(l));
+    let end = lines.length;
+    for (let i = at + 1; i < lines.length; i++) if (/^#{1,2}\s/.test(lines[i])) { end = i; break; }
+    while (end - 1 > at && !lines[end - 1].trim()) end--;
+    lines.splice(end, 0, ...lost);
+    content = lines.join('\n');
+    warns.push(`금지 항목 ${lost.length}개가 빠져 있어 되살림 (금지 항목은 재정리로 지우지 않음)`);
+  }
+  const ratio = content.length / Math.max(1, base.length);
+  if (ratio > 1.6) warns.push(`분량이 ${Math.round(ratio * 100)}%로 늘어남 — SOP 가 길면 AI 집중도가 떨어짐`);
+  if (ratio < 0.5) warns.push(`분량이 ${Math.round(ratio * 100)}%로 줄어듦 — 빠진 지침이 없는지 확인`);
+  return { ok: true as const, content, warns };
+}
+
+/** 줄 단위 비교 (LCS) — 재정리 전/후 화면 표시용 */
+export function lineDiff(a: string, b: string) {
+  const A = a.replace(/\r\n/g, '\n').split('\n');
+  const B = b.replace(/\r\n/g, '\n').split('\n');
+  const n = A.length, m = B.length;
+  const dp = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) dp[i][j] = A[i] === B[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+  const out: { t: 'same' | 'add' | 'del'; line: string }[] = [];
+  let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (A[i] === B[j]) { out.push({ t: 'same', line: A[i] }); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) out.push({ t: 'del', line: A[i++] });
+    else out.push({ t: 'add', line: B[j++] });
+  }
+  while (i < n) out.push({ t: 'del', line: A[i++] });
+  while (j < m) out.push({ t: 'add', line: B[j++] });
+  return out;
+}

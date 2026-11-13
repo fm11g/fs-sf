@@ -6,6 +6,7 @@ import { sbBrowser } from '@/lib/supabase/client';
 import { FREEDOM_KO, GATE_KO, STATE_KO, STEP_DEFS, stepDef, type StepKey } from '@/lib/steps';
 import type { Content, StepRow } from '@/lib/types';
 import { CopyEditor, DesignEditor, JsonEditor, LandingEditor, Readable, ScriptEditor } from './editors';
+import RatingBox from './RatingBox';
 
 const fmtMs = (ms: number) => (ms >= 60000 ? `${Math.round(ms / 6000) / 10}분` : `${Math.round(ms / 1000)}초`);
 
@@ -68,18 +69,6 @@ export default function Workbench({ params }: { params: { id: string } }) {
   const decideStep = (decision: 'approve' | 'reject') => act(decision, async () => {
     if (decision === 'reject' && !note.trim()) throw new Error('반려 사유(=재작업 지시)를 적어 주세요');
     afterDecide(await api('/api/steps/decide', { contentId: c.id, step: sel, decision, note })); setNote('');
-  });
-  const mark = (kind: 'good' | 'bad') => act('mark', async () => {
-    if (kind === 'bad' && !note.trim()) throw new Error('무엇이 아쉬운지 메모란에 적어 주세요 (SOP 학습 근거가 됩니다)');
-    const r = await api('/api/exemplars', { contentId: c.id, step: sel, kind, note });
-    setLearnMsg({ text: `${kind === 'good' ? '👍 좋은 예' : '👎 아쉬운 예'}로 저장 — 이 단계 학습 재료 ${r.counts.unused_signal}/${r.learn_min}`, step: sel });
-    setNote('');
-    if (r.should_propose) triggerLearn(sel);
-  });
-  const approveGood = () => act('approve', async () => {
-    const r = await api('/api/exemplars', { contentId: c.id, step: sel, kind: 'good', note });
-    afterDecide({ ...(await api('/api/steps/decide', { contentId: c.id, step: sel, decision: 'approve', note })), should_propose: r.should_propose });
-    setNote('');
   });
   const aiDecide = (apply: boolean) => act('ai', () => api('/api/steps/ai-decide', { contentId: c.id, step: sel, apply }));
   const save = (patch: any) => act('save', () => api(`/api/contents/${c.id}`, patch, 'PATCH'));
@@ -146,7 +135,7 @@ export default function Workbench({ params }: { params: { id: string } }) {
             {learnMsg && learnMsg.step === sel && <p className="learnline">🧠 {learnMsg.text} · <Link href={`/admin/sop?step=${sel}`}>SOP 학습 보기</Link></p>}
             {exemplars.filter((x) => x.step === sel).map((x) => (
               <span key={x.id} className={`tag ${x.kind === 'bad' ? 'rejected' : 'approved'}`} style={{ marginRight: 6 }} title={x.note || ''}>
-                {x.kind === 'good' ? '👍 좋은 예' : x.kind === 'bad' ? '👎 아쉬운 예' : '✍️ 수정 예'}{x.used_in ? ` · SOP 반영 #${x.used_in}` : ''}
+                {x.kind === 'edit' ? '✍️ 수정 예' : `★${x.score ?? '-'}`}{x.tags?.length ? ` ${x.tags.slice(0, 3).join('·')}` : ''}{x.used_in ? ` · SOP 반영 #${x.used_in}` : ''}
               </span>
             ))}
             {row.decided_by && <p className="mute">결정: {row.decided_by === 'human' ? '사람' : row.decided_by === 'ai' ? 'AI' : '자동'} · {row.decision_note || ''}</p>}
@@ -160,7 +149,6 @@ export default function Workbench({ params }: { params: { id: string } }) {
                   {canDecide && <>
                     <button className="ok" disabled={!!busy} onClick={() => decideStep('approve')}>승인</button>
                     <button className="ok" disabled={!!busy} onClick={approveAndGo}>승인하고 계속 진행 ▶</button>
-                    <button className="ok" disabled={!!busy} onClick={approveGood} title="승인하면서 좋은 예로 저장 (메모 = 좋은 이유)">승인 + 👍</button>
                     <button disabled={!!busy} onClick={() => aiDecide(false)}>{busy === 'ai' ? 'AI 검수 중…' : '🤖 AI에게 판단 맡기기'}</button>
                     <button disabled={!!busy} onClick={() => aiDecide(true)}>🤖 AI 판단 + 미달이면 자동 수정</button>
                   </>}
@@ -168,12 +156,8 @@ export default function Workbench({ params }: { params: { id: string } }) {
                 {output != null && (
                   <div className="row" style={{ marginTop: 8, alignItems: 'stretch' }}>
                     <textarea style={{ flex: 1, minHeight: 54, fontFamily: 'inherit', fontSize: 14 }} value={note} onChange={(e) => setNote(e.target.value)}
-                      placeholder={'수정 지시 / 반려 사유 / 좋은·아쉬운 이유 — 예) "2번 훅으로 바꿔줘", "숫자를 첫 문장에 둔 게 좋음"'} />
+                      placeholder={'수정 지시 / 반려 사유 — 예) "2번 훅으로 바꿔줘", "숫자를 첫 문장으로", "더 단호한 어조"'} />
                     <div style={{ display: 'grid', gap: 6 }}>
-                      <div className="row" style={{ gap: 6 }}>
-                        <button disabled={!!busy} onClick={() => mark('good')} title="메모란 = 좋은 이유. SOP 학습 재료로 저장">👍 좋은 예</button>
-                        <button disabled={!!busy} onClick={() => mark('bad')} title="메모란 = 아쉬운 점">👎 아쉬운 예</button>
-                      </div>
                       <button disabled={!!busy || !note.trim()} onClick={() => run(note)}>이 지시대로 재생성</button>
                       <button disabled={!!busy || !note.trim() || !canDecide} onClick={() => decideStep('reject')}>반려(사유 저장)</button>
                     </div>
@@ -212,6 +196,12 @@ export default function Workbench({ params }: { params: { id: string } }) {
               </div>
             )}
           </div>
+
+          {def.kind === 'ai' && output != null && (
+            <RatingBox contentId={c.id} step={sel} row={row} ratings={exemplars.filter((x) => x.step === sel)} canApprove={canDecide}
+              onApprove={async (n) => afterDecide(await api('/api/steps/decide', { contentId: c.id, step: sel, decision: 'approve', note: n }))}
+              onSaved={(r) => { setLearnMsg({ text: `${r.updated ? '평가 수정' : '평가 저장'} ★${r.exemplar.score} — 이 단계 학습 재료 ${r.counts.unused_signal}/${r.learn_min} · 평균 ★${r.counts.avg ?? '-'}`, step: sel }); if (r.should_propose) triggerLearn(sel); load(); }} />
+          )}
 
           {/* 규칙 검사 · AI 의견 · AI 검수 */}
           {(row.checks?.length > 0 || row.ai_notes || row.ai_review) && (

@@ -1,9 +1,10 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { sbAdmin } from './supabase/server';
 import { STEP_DEFS, stepDef, type StepKey } from './steps';
 
-export type Sop = { step: StepKey; content: string; freedom: number; gate: 'manual' | 'ai' | 'auto'; provider?: string; updated_at?: string; isDefault?: boolean };
+export type Sop = { step: StepKey; content: string; freedom: number; gate: 'manual' | 'ai' | 'auto'; provider?: string; best_of?: number; updated_at?: string; isDefault?: boolean };
 
 const DEFAULTS: Record<StepKey, { freedom: number; gate: Sop['gate'] }> = {
   research: { freedom: 1, gate: 'manual' },
@@ -24,7 +25,7 @@ export const sopFile = (step: StepKey) => `sop/${stepDef(step).no}-${step}.md`;
 export function defaultSop(step: StepKey): Sop {
   let content = `# ${stepDef(step).no}. ${stepDef(step).label}\n`;
   try { content = fs.readFileSync(path.join(process.cwd(), sopFile(step)), 'utf8'); } catch { /* 파일 없음 */ }
-  return { step, content, ...DEFAULTS[step], provider: 'auto', isDefault: true };
+  return { step, content, ...DEFAULTS[step], provider: 'auto', best_of: 1, isDefault: true };
 }
 
 /** DB에 저장된 SOP가 있으면 그것, 없으면 저장소 기본값 */
@@ -38,9 +39,9 @@ export async function listSops(): Promise<Sop[]> {
   return STEP_DEFS.map((d) => (data || []).find((r: any) => r.step === d.key) || defaultSop(d.key));
 }
 
-export async function saveSop(step: StepKey, patch: Partial<Pick<Sop, 'content' | 'freedom' | 'gate' | 'provider'>>, note?: string) {
+export async function saveSop(step: StepKey, patch: Partial<Pick<Sop, 'content' | 'freedom' | 'gate' | 'provider' | 'best_of'>>, note?: string) {
   const cur = await getSop(step);
-  const row = { step, content: patch.content ?? cur.content, freedom: patch.freedom ?? cur.freedom, gate: patch.gate ?? cur.gate, provider: patch.provider ?? cur.provider ?? 'auto', updated_at: new Date().toISOString() };
+  const row = { step, content: patch.content ?? cur.content, freedom: patch.freedom ?? cur.freedom, gate: patch.gate ?? cur.gate, provider: patch.provider ?? cur.provider ?? 'auto', best_of: Math.min(4, Math.max(1, Number(patch.best_of ?? cur.best_of ?? 1))), updated_at: new Date().toISOString() };
   const db = sbAdmin();
   const { error } = await db.from('sops').upsert(row);
   if (error) throw new Error(error.message);
@@ -68,3 +69,6 @@ export async function commitSopToGithub(step: StepKey, content: string) {
   if (!res.ok) throw new Error(`GitHub 커밋 실패 ${res.status}: ${(await res.text()).slice(0, 200)}`);
   return (await res.json()).commit?.html_url as string;
 }
+
+/** SOP 버전 식별자 (내용 해시 8자) — 실행·평가 기록에 남겨 버전별 점수를 비교 */
+export const sopHash = (content: string) => crypto.createHash('sha1').update(content || '').digest('hex').slice(0, 8);

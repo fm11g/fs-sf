@@ -1,3 +1,13 @@
 {
-  "crons": [{ "path": "/api/cron/daily", "schedule": "0 9 * * *" }]
+  "crons": [
+    {
+      "path": "/api/cron/daily",
+      "schedule": "0 9 * * *"
+    }
+  ],
+  "git": {
+    "deploymentEnabled": {
+      "data": false
+    }
+  }
 }

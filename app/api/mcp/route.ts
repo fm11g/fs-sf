@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { advance, aiDecide, decide, ensureSteps, getOutput, getSettings, newSlug, onEdited, requireApproved, runStep, stepBrief, stepSubmit } from '@/lib/pipeline';
 import { providersStatus, resolveChain } from '@/lib/llm';
-import { applyProposal, learnCounts, markExemplar, proposeSop, rejectProposal, revertProposal } from '@/lib/learn';
+import { applyProposal, consolidateSop, learnCounts, learningSummary, markExemplar, proposeSop, rateOutput, rejectProposal, revertProposal } from '@/lib/learn';
+import { exportStatus, flushExports, rebuildDatasets } from '@/lib/export';
+import { tagsFor } from '@/lib/tags';
 import { board, metrics } from '@/lib/ops';
 import { getSop, listSops, saveSop } from '@/lib/sop';
 import { dispatch } from '@/lib/github';
@@ -53,17 +55,22 @@ const TOOLS: { name: string; description: string; inputSchema: any; run: (a: any
   { name: 'sop_list', description: '단계별 SOP 요약(자유도·결정 방식)', inputSchema: obj({}), run: async () => (await listSops()).map((s) => ({ step: s.step, freedom: s.freedom, gate: s.gate, chars: s.content.length, is_default: !!s.isDefault })) },
   { name: 'sop_get', description: '단계 SOP(md) 전문', inputSchema: obj({ step: stepEnum }, ['step']), run: (a) => getSop(a.step) },
   { name: 'sop_update', description: 'SOP 수정: content(md 전문), freedom(0~3), gate(manual|ai|auto). 다음 실행부터 반영, 이력 저장', inputSchema: obj({ step: stepEnum, content: str, freedom: { type: 'number' }, gate: { type: 'string', enum: ['manual', 'ai', 'auto'] }, provider: { type: 'string', enum: ['auto', 'claude', 'openai', 'oss'] }, note: str }, ['step']), run: (a) => saveSop(a.step, { content: a.content, freedom: a.freedom, gate: a.gate, provider: a.provider }, a.note || 'MCP') },
-  { name: 'exemplar_mark', description: '산출물을 👍 좋은 예(good) 또는 👎 아쉬운 예(bad)로 저장 → SOP 학습 재료. note 에 좋은/아쉬운 이유. should_propose 가 true 면 sop_learn_propose 를 호출할 때', inputSchema: obj({ content_id: str, step: { type: 'string', enum: AI_STEPS }, kind: { type: 'string', enum: ['good', 'bad'] }, note: str }, ['content_id', 'step', 'kind']), run: (a) => markExemplar(a.step, a.content_id, a.kind, a.note || '', 'mcp') },
+  { name: 'output_rate', description: '산출물 평가: 1~5점 + 태그 + 이유. 같은 산출물이면 갱신. GitHub(등급 폴더)·구글 시트에 저장되고, 고득점은 다음 생성의 참고 예시·SOP 학습 근거가 된다. 태그 후보는 rating_tags', inputSchema: obj({ content_id: str, step: { type: 'string', enum: AI_STEPS }, score: { type: 'number', minimum: 1, maximum: 5 }, tags: { type: 'array', items: str }, note: str }, ['content_id', 'step', 'score']), run: (a) => rateOutput(a.step, a.content_id, { score: a.score, tags: a.tags, note: a.note, source: 'mcp' }) },
+  { name: 'rating_tags', description: '단계별 평가 태그 후보 (좋은 점 pos / 아쉬운 점 neg)', inputSchema: obj({ step: { type: 'string', enum: AI_STEPS } }, ['step']), run: async (a) => tagsFor(a.step) },
+  { name: 'learning_notes', description: '단계의 지금까지의 학습 노트(md): 점수 현황·SOP 버전별 평균·점수를 올린/내린 조건·반영/거절 이력·높은/낮은 점수 이유', inputSchema: obj({ step: { type: 'string', enum: AI_STEPS } }, ['step']), run: async (a) => (await learningSummary(a.step)).md },
+  { name: 'sop_consolidate', description: '지금까지의 학습 전체로 SOP 를 다시 정리한 재정리안 생성 (구조·금지 항목 보존, 자동 반영 없음 → sop_proposal_decide 로 반영). 30~90초', inputSchema: obj({ step: { type: 'string', enum: AI_STEPS }, instruction: str, force: { type: 'boolean' } }, ['step']), run: (a) => consolidateSop(a.step, { instruction: a.instruction, force: !!a.force }) },
+  { name: 'data_export', description: 'GitHub·구글 시트 내보내기: status(대기·실패 현황) | flush(대기분 지금 보내기) | rebuild(학습 데이터셋·색인·학습 노트 재생성)', inputSchema: obj({ action: { type: 'string', enum: ['status', 'flush', 'rebuild'] } }, ['action']), run: async (a) => a.action === 'flush' ? flushExports({ limit: 200 }) : a.action === 'rebuild' ? (await rebuildDatasets()).summary : exportStatus() },
+  { name: 'exemplar_mark', description: '(이전 방식) good=4점 / bad=2점 평가. 가능하면 output_rate 사용', inputSchema: obj({ content_id: str, step: { type: 'string', enum: AI_STEPS }, kind: { type: 'string', enum: ['good', 'bad'] }, note: str }, ['content_id', 'step', 'kind']), run: (a) => markExemplar(a.step, a.content_id, a.kind, a.note || '', 'mcp') },
   { name: 'sop_learn_status', description: '단계별 학습 재료 개수(좋은 예·수정 예·아쉬운 예)·대기 제안·제안 가능 여부', inputSchema: obj({ step: { type: 'string', enum: AI_STEPS } }), run: async (a) => a.step ? learnCounts(a.step) : Object.fromEntries(await Promise.all(AI_STEPS.map(async (k) => [k, await learnCounts(k)]))) },
   { name: 'sop_learn_propose', description: '좋은 결과물을 분석해 기존 SOP 대비 추가/수정/삭제 제안 생성 (learn_mode=auto 면 안전한 변경 자동 반영). 20~60초', inputSchema: obj({ step: { type: 'string', enum: AI_STEPS }, force: { type: 'boolean' } }, ['step']), run: (a) => proposeSop(a.step, { force: !!a.force }) },
   { name: 'sop_proposals', description: 'SOP 학습 제안 목록 (변경 번호·op·section·target·text·reason·근거)', inputSchema: obj({ step: { type: 'string', enum: AI_STEPS }, status: { type: 'string', enum: ['pending', 'applied', 'rejected', 'superseded'] } }), run: async (a) => {
-    let q = sbAdmin().from('sop_proposals').select('id, step, status, summary, changes, patterns, exemplar_ids, created_at, decided_by').order('created_at', { ascending: false }).limit(20);
+    let q = sbAdmin().from('sop_proposals').select('id, step, kind, status, summary, changes, patterns, changelog, proposed_content, exemplar_ids, stats, created_at, decided_by').order('created_at', { ascending: false }).limit(20);
     if (a.step) q = q.eq('step', a.step);
     if (a.status) q = q.eq('status', a.status);
     return (await q).data || [];
   } },
-  { name: 'sop_proposal_decide', description: 'SOP 학습 제안 처리. apply: selected(반영할 변경 번호, 0부터)·edits({번호: 새 문구}) 지정 가능 / reject / revert(반영 되돌리기). 운영자가 결정했을 때만 호출', inputSchema: obj({ id: { type: 'number' }, decision: { type: 'string', enum: ['apply', 'reject', 'revert'] }, selected: { type: 'array', items: { type: 'number' } }, edits: { type: 'object' }, note: str }, ['id', 'decision']), run: (a) =>
-    a.decision === 'apply' ? applyProposal(a.id, { selected: a.selected, edits: a.edits, note: a.note, by: 'human' }) : a.decision === 'reject' ? rejectProposal(a.id, a.note) : revertProposal(a.id) },
+  { name: 'sop_proposal_decide', description: 'SOP 제안 처리. apply: 보완 제안은 selected(변경 번호, 0부터)·edits({번호: 새 문구}), 재정리안은 content(다듬은 md, 선택)·force / reject / revert(반영 되돌리기). 운영자가 결정했을 때만 호출', inputSchema: obj({ id: { type: 'number' }, decision: { type: 'string', enum: ['apply', 'reject', 'revert'] }, selected: { type: 'array', items: { type: 'number' } }, edits: { type: 'object' }, content: str, force: { type: 'boolean' }, note: str }, ['id', 'decision']), run: (a) =>
+    a.decision === 'apply' ? applyProposal(a.id, { selected: a.selected, edits: a.edits, content: a.content, force: !!a.force, note: a.note, by: 'human' }) : a.decision === 'reject' ? rejectProposal(a.id, a.note) : revertProposal(a.id) },
   { name: 'render_request', description: '음성·자막·BGM·모션그래픽 렌더를 워커에 요청 (대사·디자인 승인 필요, 3~6분)', inputSchema: obj({ content_id: str }, ['content_id']), run: async (a) => {
     await requireApproved(a.content_id, 'render');
     await sbAdmin().from('steps').update({ state: 'running', started_at: new Date().toISOString() }).eq('content_id', a.content_id).eq('step', 'render');
@@ -85,7 +92,7 @@ async function handle(m: any) {
   if (m.id === undefined) return null; // notification
   switch (m.method) {
     case 'initialize':
-      return rpc(m.id, { protocolVersion: m.params?.protocolVersion || '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'today-policy-fund', version: '0.4.0' },
+      return rpc(m.id, { protocolVersion: m.params?.protocolVersion || '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'today-policy-fund', version: '0.5.0' },
         instructions: '오늘의 정책자금 숏폼 공장. factory_board 로 현황을 보고, pipeline_advance 로 진행, 검수 대기 단계는 content_get 으로 확인 후 step_decide. 서버 제공자가 없으면 step_brief → 직접 작성 → step_submit. publish_request 는 운영자가 명시적으로 요청할 때만.' });
     case 'ping': return rpc(m.id, {});
     case 'tools/list': return rpc(m.id, { tools: TOOLS.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })) });

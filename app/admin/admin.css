@@ -102,3 +102,21 @@
 #tpf-admin .op.modify{background:#e8f0ff;color:#1739a6}
 #tpf-admin .op.remove{background:#fdecea;color:var(--bad)}
 #tpf-admin .chips label{display:inline-flex;gap:6px;align-items:center;border:1px solid var(--line);border-radius:8px;padding:6px 10px;margin:0 6px 6px 0;background:#fff}
+
+/* ── v5: 점수·태그 · 데이터 내보내기 · SOP 재정리 ── */
+#tpf-admin .rating{border-color:#f0d36b;background:#fffdf3}
+#tpf-admin .stars{display:inline-flex;gap:2px}
+#tpf-admin .stars button{border:0;background:none;font-size:26px;line-height:1;color:#d7dbe6;padding:0 2px}
+#tpf-admin .stars button.on{color:#f0b400}
+#tpf-admin .chip{border-radius:999px;padding:4px 10px;font-size:12px;margin:0 6px 6px 0}
+#tpf-admin .chip.pos.on{background:#e6f6ef;border-color:#14845b;color:#14845b;font-weight:700}
+#tpf-admin .chip.neg.on{background:#fdecea;border-color:#c0392b;color:#c0392b;font-weight:700}
+#tpf-admin .diff{font-family:ui-monospace,monospace;font-size:12px;line-height:1.6;border:1px solid var(--line);border-radius:10px;max-height:480px;overflow:auto;background:#fff}
+#tpf-admin .diff div{padding:0 10px;white-space:pre-wrap}
+#tpf-admin .diff .add{background:#e6f6ef;color:#0f5e41}
+#tpf-admin .diff .del{background:#fdecea;color:#9b2c20;text-decoration:line-through}
+#tpf-admin .lift{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+#tpf-admin .lift td{padding:4px 6px;font-size:13px}
+#tpf-admin .up{color:var(--ok);font-weight:700}
+#tpf-admin .down{color:var(--bad);font-weight:700}
+#tpf-admin .scorebar{display:inline-block;height:8px;background:#f0b400;border-radius:4px;vertical-align:middle}
