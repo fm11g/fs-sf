@@ -16,7 +16,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <Link href="/admin/landing">랜딩 템플릿</Link>
         <Link href="/admin/leads">신청 내역</Link>
         <Link href="/admin/settings">설정 · BGM · 채널</Link>
-        <Link href="/" target="_blank">사이트 보기 ↗</Link>
+        <Link href="/policy" target="_blank">정보글 사이트 ↗</Link>
         <Link href="/l/today" target="_blank">오늘 랜딩 ↗</Link>
       </nav>
       <main>{children}</main>

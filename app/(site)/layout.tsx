@@ -25,7 +25,7 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
 #tpf-site .meta{color:#6b7594;font-size:14px}
 #tpf-site footer{color:#8a93ad;font-size:12px;text-align:center;padding:24px}
 `}</style>
-      <header><div className="in"><Link href="/">오늘의 <span>정책자금</span></Link></div></header>
+      <header><div className="in"><Link href="/policy">오늘의 <span>정책자금</span></Link></div></header>
       <div className="main">{children}</div>
       <footer>정책자금은 각 기관 심사에 따라 승인 여부·한도가 결정됩니다. 최신 공고는 기관 홈페이지에서 반드시 확인하세요.</footer>
     </div>
