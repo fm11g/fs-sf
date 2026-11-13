@@ -2,12 +2,26 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
+import { AI_STEPS } from '@/lib/steps';
 
 export default function Metrics() {
   const [days, setDays] = useState(30);
   const [m, setM] = useState<any>(null);
   useEffect(() => { setM(null); api(`/api/metrics?days=${days}`).then(setM).catch((e) => alert(e.message)); }, [days]);
   if (!m) return <p>불러오는 중…</p>;
+  /** 성과 좋은 콘텐츠의 모든 AI 단계 산출물을 좋은 예로 → SOP 학습 재료 */
+  const markAll = async (c: any) => {
+    if (!confirm(`'${c.topic || c.slug}' 의 조사~정보글 산출물을 모두 👍 좋은 예로 저장할까요?`)) return;
+    let n = 0; const propose: string[] = [];
+    for (const step of AI_STEPS) {
+      try {
+        const r = await api('/api/exemplars', { contentId: c.id, step, kind: 'good', source: 'metrics', note: `성과 기준 선택: 조회 ${c.views} · 신청 ${c.leads}${c.cvr != null ? ` · 전환 ${c.cvr}%` : ''}` });
+        n++; if (r.should_propose) propose.push(step);
+      } catch { /* 산출물 없는 단계 */ }
+    }
+    for (const step of propose) api('/api/learn', { action: 'propose', step }).catch(() => {});
+    alert(`${n}개 단계를 좋은 예로 저장했습니다${propose.length ? ` · ${propose.length}개 단계 SOP 학습 제안 생성 중` : ''}`);
+  };
   const t = m.totals;
   const maxSec = Math.max(1, ...m.perStep.map((s: any) => s.avg_work_s + s.avg_wait_min * 60));
 
@@ -65,11 +79,11 @@ export default function Metrics() {
       <div className="card">
         <h2>콘텐츠별</h2>
         <table>
-          <thead><tr><th>주제</th><th>현재</th><th>작업</th><th>대기</th><th>재작업</th><th>리드타임</th><th>조회</th><th>신청</th><th>전환</th></tr></thead>
+          <thead><tr><th>주제</th><th>현재</th><th>작업</th><th>대기</th><th>재작업</th><th>리드타임</th><th>조회</th><th>신청</th><th>전환</th><th></th></tr></thead>
           <tbody>
             {m.perContent.map((c: any) => (
               <tr key={c.id}><td><Link href={`/admin/contents/${c.id}`}>{c.topic || c.slug}</Link></td><td>{c.published ? '게시' : c.current_step}</td>
-                <td>{c.work_min}분</td><td>{c.wait_min}분</td><td>{c.reworks}</td><td>{c.lead_time_h != null ? c.lead_time_h + 'h' : '-'}</td><td>{c.views}</td><td>{c.leads}</td><td>{c.cvr != null ? c.cvr + '%' : '-'}</td></tr>
+                <td>{c.work_min}분</td><td>{c.wait_min}분</td><td>{c.reworks}</td><td>{c.lead_time_h != null ? c.lead_time_h + 'h' : '-'}</td><td>{c.views}</td><td>{c.leads}</td><td>{c.cvr != null ? c.cvr + '%' : '-'}</td><td><button title="성과가 좋은 콘텐츠의 산출물을 SOP 학습 재료로" onClick={() => markAll(c)}>👍 학습</button></td></tr>
             ))}
           </tbody>
         </table>

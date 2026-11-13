@@ -14,12 +14,13 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   if (deny) return deny;
   const db = sbAdmin();
   const steps = await ensureSteps(params.id);
-  const [{ data: content }, { data: variant }, { data: jobs }] = await Promise.all([
+  const [{ data: content }, { data: variant }, { data: jobs }, { data: exemplars }] = await Promise.all([
     db.from('contents').select('*').eq('id', params.id).single(),
     db.from('landing_variants').select('*, landing_templates(slots)').eq('content_id', params.id).maybeSingle(),
     db.from('jobs').select('*').eq('content_id', params.id).order('created_at', { ascending: false }).limit(40),
+    db.from('exemplars').select('id, step, kind, note, used_in, created_at').eq('content_id', params.id).order('created_at', { ascending: false }),
   ]);
-  return NextResponse.json({ content, variant, steps, jobs });
+  return NextResponse.json({ content, variant, steps, jobs, exemplars: exemplars || [] });
 }
 
 /** 산출물 직접 수정 → 해당 단계는 '검수 대기', 하위 단계는 '재작업 필요' */

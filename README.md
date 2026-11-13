@@ -6,6 +6,8 @@
 - 단계마다 **SOP(md)** 가 있어 AI가 무엇에 집중할지, 얼마나 자유롭게 일할지(자유도 0~3), 누가 결정할지를 관리자에서 언제든 바꿉니다.
 - **현황판**(어느 콘텐츠가 어느 단계에서 무엇을 기다리는지)과 **작업 효율**(단계별 작업·대기 시간, 재작업률, AI 결정 비율, 비용, 조회→신청 전환)을 제공합니다.
 - **API + MCP 서버 + CLI**로 Claude Code · Codex · 그 밖의 에이전트에서 같은 스킬로 공장을 조작합니다.
+- 작업 중 내가 고른 **좋은 결과물(👍·직접 고친 것·성과)에서 패턴을 찾아 기존 SOP 를 줄 단위로 보완**합니다. 제안만 받거나 자동 반영하거나, 변경별로 골라·고쳐 반영하고 되돌릴 수 있습니다.
+- 단계가 끝날 때마다 **입력한 이메일로 일의 흐름과 정리된 내용**을 보내고, 매일 18시에 하루 요약을 보냅니다.
 - 서버 AI는 **Claude → OpenAI → 오픈소스 모델** 순으로 자동 전환되고, 전부 안 되면 **에이전트가 직접 작성해 제출**하는 경로가 있습니다.
 
 ## 흐름
@@ -33,6 +35,8 @@ app/(site)/, app/l/   공개 사이트(SEO 정보글) · 랜딩 서빙
 lib/steps.ts          공정 정의(순서·의존 관계) ← 단계를 추가/변경할 때 여기부터
 lib/pipeline.ts       생성 → 규칙 검사 → 결정 방식 적용 → 하위 단계 무효화
 lib/prompts.ts        단계별 출력 형식(JSON 스키마). SOP md 는 여기에 주입됨
+lib/learn.ts          좋은 결과물 → SOP 학습 제안·반영·되돌리기 (lib/sop-merge.ts: 줄 단위 적용)
+lib/notify.ts         이메일 알림 (lib/email.ts: 발송·템플릿) · vercel.json 크론(매일 18시 요약)
 lib/llm.ts            AI 제공자 전환 (claude → openai → oss) · 외부 검색 주입
 lib/sop.ts, sop/*.md  SOP 로딩·저장·GitHub 커밋 / 단계별 SOP 기본값
 skills/               에이전트 스킬 원본 → .claude/skills · .agents/skills 로 동기화 (npm run skills:sync)
@@ -41,7 +45,7 @@ AGENTS.md, CLAUDE.md  에이전트 공통 지침 (Codex 등 / Claude Code)
 bin/tpf.mjs           공장 CLI — MCP가 없는 에이전트도 같은 명령으로 조작
 landing/template.html 신청 유도형 랜딩 샘플(슬롯 30개 + 신청폼)
 worker/               렌더·업로드 워커 (video/Short.tsx = 모션그래픽)
-supabase/migrations/  001_init.sql → 002_workflow.sql → 003_providers.sql 순서로 실행
+supabase/migrations/  001 → 002 → 003 → 004_learning_notify.sql 순서로 실행
 docs/                 SETUP · OPERATIONS(운영 SOP) · API-MCP
 ```
 
@@ -49,6 +53,7 @@ docs/                 SETUP · OPERATIONS(운영 SOP) · API-MCP
 
 - [docs/SETUP.md](docs/SETUP.md) — 설치 (Supabase → GitHub → Vercel → 채널 연결), 30분
 - [docs/OPERATIONS.md](docs/OPERATIONS.md) — 매일 운영하는 법, 결정 방식·자유도 조정 기준, 성과를 SOP에 반영하는 법
+- [docs/LEARNING-NOTIFY.md](docs/LEARNING-NOTIFY.md) — 좋은 결과물로 SOP 자동 보완, 수동 조절, 이메일 알림 설정과 내용
 - [docs/AGENTS-SKILLS.md](docs/AGENTS-SKILLS.md) — Claude Code·Codex·오픈소스 에이전트 연결, 스킬 사용법, AI 제공자 전환, API 키 없이 진행하는 법
 - [docs/API-MCP.md](docs/API-MCP.md) — REST API와 MCP 도구 목록, Claude 연결 방법
 - [sop/README.md](sop/README.md) — SOP 작성 규칙과 단계별 파일

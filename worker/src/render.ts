@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { bundle } from '@remotion/bundler';
 import { renderMedia, renderStill, selectComposition } from '@remotion/renderer';
-import { db, gateOf, getStep, log, setStep, settings, syncCurrent, uploadPublic } from './env.js';
+import { db, gateOf, getStep, log, notifySite, setStep, settings, syncCurrent, uploadPublic } from './env.js';
 import { tts } from './tts.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -94,5 +94,6 @@ export async function render(contentId: string) {
   });
   await syncCurrent(contentId);
   await log(contentId, 'render', 'done', `${totalSec.toFixed(1)}초 영상 · ${pass ? '자동 승인' : '검수 대기'}`);
+  await notifySite('render_done', contentId, 'render');
   return { videoUrl, mp4, approved: pass };
 }

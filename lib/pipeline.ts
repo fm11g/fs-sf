@@ -3,15 +3,14 @@ import { USER, buildSystem, reviewPrompt } from './prompts';
 import { sbAdmin } from './supabase/server';
 import { charLen, parseSlots, validate } from './landing';
 import { getSop, type Sop } from './sop';
+import { getOutput, getSettings } from './settings';
+import { notify } from './notify';
+import { learnCounts, recordEditExemplar } from './learn';
+export { getOutput, getSettings };
 import { STEP_DEFS, STEP_KEYS, downstream, stepDef, type StepKey } from './steps';
 import type { Settings, StepRow } from './types';
 
 type Check = { level: 'error' | 'warn' | 'ok'; msg: string };
-
-export async function getSettings(): Promise<Settings> {
-  const { data } = await sbAdmin().from('settings').select('value').eq('id', 1).single();
-  return data!.value as Settings;
-}
 
 export function landingLink(s: Settings, slug: string, source: 'youtube' | 'instagram' | 'blog') {
   const medium = source === 'youtube' ? 'shorts' : source === 'instagram' ? 'reels' : 'post';
@@ -62,15 +61,6 @@ async function markStale(contentId: string, step: StepKey) {
 }
 
 // ── 산출물 읽기/쓰기 ────────────────────────────────────────────────
-export async function getOutput(step: StepKey, c: any) {
-  if (step === 'landing') {
-    const { data } = await sbAdmin().from('landing_variants').select('values').eq('content_id', c.id).maybeSingle();
-    return data?.values ?? null;
-  }
-  const f = stepDef(step).field;
-  return f ? c[f] ?? null : null;
-}
-
 // ── 코드 규칙 검사 (md 로 바뀌지 않는 기계 규칙) ─────────────────────
 export function lint(step: StepKey, out: any, c: any, s: Settings, extra: { slots?: any[] } = {}): Check[] {
   const r: Check[] = [];
@@ -305,7 +295,7 @@ async function settle(step: StepKey, contentId: string, row: StepRow, s: Setting
   await setStep(contentId, step, {
     state, decided_by: decidedBy, decided_at: decidedBy ? t : null,
     decision_note: decidedBy === 'ai' ? aiReview?.summary ?? null : null,
-    ai_notes: gen.notes, ai_review: aiReview, checks, feedback: null, finished_at: t,
+    ai_notes: gen.notes, ai_review: aiReview, checks, feedback: null, finished_at: t, ai_output: gen.output ?? null,
     provider: gen.provider ?? null, model: gen.model ?? null,
     attempts: row.attempts + 1 + extra,
     work_ms: Number(row.work_ms) + (Date.now() - t0),
@@ -315,6 +305,7 @@ async function settle(step: StepKey, contentId: string, row: StepRow, s: Setting
   await markStale(contentId, step);
   await syncCurrent(contentId);
   await log(contentId, step, 'done', `${gen.provider || '-'} · ${state === 'approved' ? `승인(${decidedBy})` : '검수 대기'}`);
+  await notify(state === 'approved' ? 'step_done' : 'step_review', { contentId, step });
   return { step, state, decided_by: decidedBy, provider: gen.provider, model: gen.model, checks, ai_review: aiReview };
 }
 
@@ -342,6 +333,7 @@ export async function runStep(step: StepKey, contentId: string, opts: { feedback
     await setStep(contentId, step, { state: 'failed', finished_at: now(), work_ms: Number(row.work_ms) + (Date.now() - t0) });
     await sbAdmin().from('contents').update({ error: `[${step}] ${e.message}` }).eq('id', contentId);
     await log(contentId, step, 'failed', e.message);
+    await notify('step_failed', { contentId, step, message: e.message });
     throw e;
   }
 }
@@ -398,7 +390,13 @@ export async function decide(step: StepKey, contentId: string, decision: 'approv
   }
   await log(contentId, step, decision === 'approve' ? 'approved' : 'rejected', `${by}${note ? ': ' + note.slice(0, 100) : ''}`);
   await syncCurrent(contentId);
-  return { step, state: decision === 'approve' ? 'approved' : 'rejected' };
+  // 사람이 고친 뒤 승인 → AI 원본과 최종본의 차이를 학습 재료(수정 예)로 자동 저장
+  let learned = false;
+  if (decision === 'approve' && by === 'human' && stepDef(step).kind === 'ai') {
+    learned = await recordEditExemplar(step, contentId, row.ai_output, note).catch(() => false);
+  }
+  const lc = learned ? await learnCounts(step).catch(() => null) : null;
+  return { step, state: decision === 'approve' ? 'approved' : 'rejected', learned_edit: learned, should_propose: !!lc?.should_propose };
 }
 
 // ── 결정: AI 에게 판단 맡기기 ───────────────────────────────────────

@@ -3,7 +3,7 @@ import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { google } from 'googleapis';
-import { db, env, getStep, log, setStep, syncCurrent } from './env.js';
+import { db, env, getStep, log, notifySite, setStep, syncCurrent } from './env.js';
 
 const clean = (t: string, max: number) => [...(t || '').replace(/[<>]/g, '')].slice(0, max).join('');
 
@@ -113,5 +113,6 @@ export async function publish(contentId: string, targets: string[] = ['youtube',
     ],
   });
   await syncCurrent(contentId);
+  await notifySite(anyOk ? 'published' : 'step_failed', contentId, 'publish', errors.length ? errors.join(' / ') : undefined);
   if (!anyOk) throw new Error(patch.error);
 }

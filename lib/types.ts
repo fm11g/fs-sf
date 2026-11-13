@@ -15,6 +15,11 @@ export type Settings = {
   lead_webhook: string;
   mcp_servers: { name: string; url: string; token?: string }[];
   llm_chain: string[];
+  notify_emails: string[];
+  notify_events: string[];
+  learn_mode: 'off' | 'propose' | 'auto';
+  learn_min: number;
+  learn_from_edits: boolean;
 };
 
 export type ScriptScene = { id: string; narration: string; captions: string[] };
@@ -70,7 +75,7 @@ export type StepState = 'pending' | 'running' | 'review' | 'approved' | 'rejecte
 export type StepRow = {
   content_id: string; step: string; state: StepState; attempts: number;
   decided_by: string | null; decision_note: string | null; feedback: string | null;
-  ai_notes: any; ai_review: any; checks: { level: 'error' | 'warn' | 'ok'; msg: string }[];
+  ai_notes: any; ai_review: any; ai_output?: any; checks: { level: 'error' | 'warn' | 'ok'; msg: string }[];
   started_at: string | null; finished_at: string | null; decided_at: string | null;
   provider: string | null; model: string | null;
   work_ms: number; wait_ms: number; input_tokens: number; output_tokens: number; updated_at: string;

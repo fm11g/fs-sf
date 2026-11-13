@@ -19,7 +19,8 @@
 | `tpf-produce` | 숏폼 1편을 조사부터 렌더 직전까지 진행 |
 | `tpf-review` | 단계 산출물을 SOP 체크리스트로 검수 |
 | `tpf-step-local` | 서버 AI 없이 지금 이 에이전트가 단계 산출물을 직접 작성·제출 |
-| `tpf-sop-tune` | 단계별 SOP·자유도·결정 방식·AI 제공자 조정 |
+| `tpf-learn` | 좋은 결과물(👍·사람이 고친 예·성과)로 SOP 보완 제안 → 선택 반영 → 되돌리기 |
+| `tpf-sop-tune` | 단계별 SOP·자유도·결정 방식·AI 제공자 직접 조정 |
 | `tpf-landing-slots` | 랜딩 HTML에 `data-slot` 을 붙여 연동 |
 
 ### 역할 (Claude Code는 `.claude/agents/` 의 서브에이전트로, 그 외 에이전트는 아래 설명대로 역할을 나눠 수행)
@@ -29,7 +30,7 @@
 | producer | 공정 진행, 사람 결정 지점에서 멈추고 보고 | `tpf-produce`, `tpf-step-local` |
 | reviewer | 엄격한 검수, 재작업 지시문 작성 (만든 쪽과 분리) | `tpf-review` |
 | researcher | 공식 출처 웹 조사로 조사 단계 직접 수행 | `tpf-step-local` |
-| sop-editor | 지표·반려 사유 근거로 SOP 개선 | `tpf-sop-tune` |
+| sop-editor | 좋은 결과물·지표·반려 사유 근거로 SOP 개선 | `tpf-learn`, `tpf-sop-tune` |
 
 ### 도구 연결
 
@@ -61,6 +62,8 @@ Next.js 14 App Router(Vercel) + Supabase + GitHub Actions 워커(Remotion).
 - 공정 순서·의존 관계의 단일 출처는 `lib/steps.ts`. 워커의 `syncCurrent` 순서 배열(`worker/src/env.ts`)과 맞춘다.
 - 모델 호출은 반드시 `lib/llm.ts` 의 `ask()` 를 거친다(제공자 전환·사용량 기록). 특정 제공자 SDK를 다른 파일에서 직접 부르지 않는다.
 - SOP md(`sop/*.md`)에는 "무엇에 집중할지"만. JSON 스키마·글자수 상한 같은 기계 규칙은 `lib/prompts.ts`·`lib/pipeline.ts(lint)`에 둔다.
+- SOP 자동 보완은 `lib/learn.ts`(제안·반영) + `lib/sop-merge.ts`(줄 단위 적용, 순수 함수). 학습 제안이 SOP 전체를 다시 쓰게 만들지 않는다.
+- 알림은 `lib/notify.ts` 의 `notify()` 한 곳에서만 보낸다(워커는 `/api/notify` 호출). 알림 실패가 파이프라인을 멈추면 안 된다.
 - 산출물이 바뀌는 모든 경로는 `runStep` · `stepSubmit` · `onEdited` 중 하나를 거쳐 하위 단계를 `stale` 로 만든다. `contents` 를 직접 update 하는 새 경로를 만들지 않는다.
 - 금융 광고: 승인·한도 보장 표현, 근거 없는 마감·선착순을 만드는 프롬프트/문구 금지.
 - 관리자 UI는 `#tpf-admin` 스코프 CSS(`app/admin/admin.css`)만 사용, 전역 CSS 추가 금지.

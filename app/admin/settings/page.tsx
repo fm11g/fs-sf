@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { sbBrowser } from '@/lib/supabase/client';
+import { NOTIFY_EVENTS } from '@/lib/notify-events';
 
 const FIELDS: [string, string, 'text' | 'number' | 'bool' | 'list' | 'json'][] = [
   ['brand', '채널명', 'text'],
@@ -27,12 +28,14 @@ export default function SettingsPage() {
   const [bgms, setBgms] = useState<any[]>([]);
   const [bgm, setBgm] = useState({ title: '', mood: 'hopeful' });
   const [prov, setProv] = useState<any>(null);
+  const [notes, setNotes] = useState<any[]>([]);
   const load = async () => {
     const { data } = await sb.from('settings').select('value').eq('id', 1).single();
     setV(data?.value || {});
     const { data: b } = await sb.from('bgm_tracks').select('*').order('created_at', { ascending: false });
     setBgms(b || []);
     fetch('/api/providers').then((r) => r.json()).then(setProv).catch(() => {});
+    sb.from('notifications').select('*').order('created_at', { ascending: false }).limit(15).then(({ data: n }) => setNotes(n || []));
   };
   useEffect(() => { load(); }, []);
   if (!v) return <p>불러오는 중…</p>;
@@ -64,6 +67,57 @@ export default function SettingsPage() {
             <span />
           </div>
         ))}
+        <button className="pri" onClick={save}>저장</button>
+      </div>
+
+      <div className="card">
+        <h2>📧 이메일 알림</h2>
+        <div className="slot">
+          <b>받는 이메일</b>
+          <input placeholder="you@example.com, team@example.com" defaultValue={(v.notify_emails || []).join(', ')} onBlur={(e) => setV({ ...v, notify_emails: e.target.value.split(/[,\s]+/).map((x) => x.trim()).filter(Boolean) })} />
+          <span className="mute">쉼표로 여러 명</span>
+        </div>
+        <div className="chips" style={{ margin: '8px 0' }}>
+          {NOTIFY_EVENTS.map(([k, label, desc]) => {
+            const on = (v.notify_events || []).includes(k);
+            return (
+              <label key={k} title={desc}>
+                <input type="checkbox" checked={on} onChange={(e) => setV({ ...v, notify_events: e.target.checked ? [...(v.notify_events || []), k] : (v.notify_events || []).filter((x: string) => x !== k) })} />
+                {label}
+              </label>
+            );
+          })}
+        </div>
+        <p className="mute">각 메일에는 일의 흐름(10단계 진행 막대) · 이번에 끝난 일의 정리된 내용 · 규칙 검사·AI 의견 · 다음 할 일과 작업대 링크가 들어갑니다. 발송은 Vercel 환경변수 RESEND_API_KEY 또는 SMTP_HOST(예: Gmail 앱 비밀번호) 설정이 필요합니다.</p>
+        <div className="row">
+          <button className="pri" onClick={save}>저장</button>
+          <button onClick={async () => { const r = await fetch('/api/notify/test', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }).then((x) => x.json()); alert(r.error || `발송 완료 (${r.via}) → ${r.to.join(', ')}`); load(); }}>테스트 메일</button>
+          <button onClick={async () => { const r = await fetch('/api/notify/test', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind: 'digest' }) }).then((x) => x.json()); alert(r.error || (r.status === 'sent' ? '하루 요약을 보냈습니다' : `발송 실패: ${r.error || r.reason}`)); load(); }}>하루 요약 지금 받기</button>
+          <span className="mute">저장 후 눌러 주세요</span>
+        </div>
+        {notes.length > 0 && (
+          <details style={{ marginTop: 10 }}><summary className="mute">최근 발송 기록</summary>
+            <table><tbody>{notes.map((n) => (
+              <tr key={n.id}><td className="mute">{new Date(n.created_at).toLocaleString('ko-KR')}</td><td><span className={`tag ${n.status === 'sent' ? 'approved' : 'rejected'}`}>{n.status}</span></td><td>{n.subject}</td><td className="mute">{n.error}</td></tr>
+            ))}</tbody></table>
+          </details>
+        )}
+      </div>
+
+      <div className="card">
+        <h2>🧠 SOP 학습</h2>
+        <div className="slot">
+          <b>학습 방식</b>
+          <select value={v.learn_mode || 'propose'} onChange={(e) => setV({ ...v, learn_mode: e.target.value })}>
+            <option value="propose">제안만 — AI 가 보완안을 만들고 내가 골라 반영 (권장)</option>
+            <option value="auto">자동 — 추가·수정 중 근거 2개 이상인 안전한 변경은 바로 반영 (삭제·금지 항목은 제안으로)</option>
+            <option value="off">끔 — 좋은 예만 모으고 제안하지 않음</option>
+          </select>
+          <span />
+        </div>
+        <div className="slot"><b>제안 기준</b><input type="number" min={1} max={20} value={v.learn_min ?? 3} onChange={(e) => setV({ ...v, learn_min: Number(e.target.value) })} /><span className="mute">단계별 미반영 좋은/수정 예 개수</span></div>
+        <div className="slot"><b>수정 예 자동 수집</b><input type="checkbox" checked={v.learn_from_edits !== false} onChange={(e) => setV({ ...v, learn_from_edits: e.target.checked })} style={{ justifySelf: 'start' }} /><span className="mute">AI 산출물을 직접 고친 뒤 승인하면 차이를 학습</span></div>
+        <p className="mute">조건을 채우면 👍 직후에, 그리고 매일 18시에 단계별 제안을 만듭니다. 반영 내용은 [SOP · AI 제어]의 변경 이력·학습 이력에 남고 되돌릴 수 있습니다.</p>
         <button className="pri" onClick={save}>저장</button>
       </div>
 

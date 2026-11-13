@@ -88,3 +88,17 @@
 #tpf-admin .seg button:last-child{border-right:0}
 #tpf-admin .seg button.on{background:var(--pri);color:#fff}
 @media (max-width:900px){#tpf-admin{grid-template-columns:1fr}#tpf-admin .bench,#tpf-admin .soplay,#tpf-admin .grid2{grid-template-columns:1fr}#tpf-admin .rail{position:static}}
+
+/* ── v4: SOP 학습 · 알림 ── */
+#tpf-admin .learnline{background:#f3e8ff;color:#5b21b6;border-radius:8px;padding:8px 10px;margin:10px 0 6px}
+#tpf-admin .chg{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:start}
+#tpf-admin .chg.off{opacity:.5}
+#tpf-admin .chg .before{color:var(--bad);text-decoration:line-through;font-size:13px}
+#tpf-admin .chg input[type=text]{width:100%}
+#tpf-admin .chg .why{color:var(--mute);font-size:12px}
+#tpf-admin .warnchip{display:inline-block;background:#fff4cc;color:#8a6100;border-radius:6px;padding:1px 6px;font-size:12px}
+#tpf-admin .op{display:inline-block;border-radius:6px;padding:1px 7px;font-size:12px;font-weight:700;margin-right:6px}
+#tpf-admin .op.add{background:#e6f6ef;color:var(--ok)}
+#tpf-admin .op.modify{background:#e8f0ff;color:#1739a6}
+#tpf-admin .op.remove{background:#fdecea;color:var(--bad)}
+#tpf-admin .chips label{display:inline-flex;gap:6px;align-items:center;border:1px solid var(--line);border-radius:8px;padding:6px 10px;margin:0 6px 6px 0;background:#fff}

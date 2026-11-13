@@ -5,6 +5,8 @@ description: 단계별 SOP(md)·자유도·결정 방식·AI 제공자를 조정
 
 # SOP 조정
 
+> 좋은 결과물에서 자동으로 보완안을 받는 경로는 `tpf-learn` 스킬(학습 제안)입니다. 이 스킬은 운영자가 직접 지시하거나, 지표·반려 사유를 근거로 손으로 고칠 때 씁니다. 대기 중인 학습 제안이 있으면(`tpf proposals <step> --status pending`) 먼저 그것을 처리할지 묻습니다.
+
 1. 현재 값 확인: `tpf sop list` (자유도·결정 방식·제공자), `tpf sop get <step>` (md 전문).
 2. 근거 확인 (추측으로 고치지 않는다)
    - `tpf metrics` — 재작업이 많은 단계(`avg_attempts`), 대기가 긴 단계, 콘텐츠별 조회·신청

@@ -26,6 +26,9 @@ claude.ai 커스텀 커넥터는 OAuth 방식만 받는 경우가 있어, 헤더
 | `step_ai_decide` | AI 검수자에게 판단 위임 |
 | `step_update_output` | 산출물 직접 교체 |
 | `sop_list` / `sop_get` / `sop_update` | SOP md·자유도·결정 방식 조회·수정 |
+| `exemplar_mark` | 👍 좋은 예 / 👎 아쉬운 예 저장 |
+| `sop_learn_status` / `sop_learn_propose` | 학습 재료 현황 / SOP 보완 제안 생성 |
+| `sop_proposals` / `sop_proposal_decide` | 제안 목록 / 반영(선택·문구 수정)·거절·되돌리기 |
 | `render_request` / `publish_request` | 워커에 렌더 / 게시 요청 |
 
 사용 예 (Claude Code): "tpf 현황판 보고 검수 대기인 것 요약해줘", "오늘 콘텐츠 03 대사를 더 단호한 어조로 재생성하고 결과 보여줘", "기획 SOP 집중 포인트 맨 위에 '마감 훅 우선' 추가해줘".
@@ -45,6 +48,10 @@ claude.ai 커스텀 커넥터는 OAuth 방식만 받는 경우가 있어, 헤더
 | POST `/api/pipeline/:step` | `{contentId, feedback?, force?, provider?}` | AI 단계 실행 |
 | POST `/api/pipeline/brief` · `/api/pipeline/submit` | `{contentId, step, feedback?}` · `{contentId, step, output, agent?}` | 에이전트 직접 작업 |
 | GET `/api/providers` | | AI 제공자 상태 |
+| POST/GET/DELETE `/api/exemplars` | `{contentId, step, kind: good|bad, note}` | 학습 재료 |
+| GET/POST `/api/learn` | `{action: propose|apply|reject|revert, step|id, selected?, edits?, content?}` | SOP 학습 제안 |
+| POST `/api/notify` · `/api/notify/test` | `{event, contentId?, step?}` · `{kind: basic|digest}` | 알림 발송 / 테스트 |
+| GET `/api/cron/daily` | `Authorization: Bearer $CRON_SECRET` | 하루 요약 + 학습 제안 일괄 |
 | POST `/api/pipeline/advance` | `{contentId}` | 다음 단계 1개. `action`: continue · wait_review · worker · running · done |
 | POST `/api/steps/decide` | `{contentId, step, decision, note?}` | 승인 / 반려 |
 | POST `/api/steps/ai-decide` | `{contentId, step, apply?}` | AI 판단 |

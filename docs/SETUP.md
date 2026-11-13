@@ -1,7 +1,7 @@
 # 설치
 
 ## 1. Supabase
-1. 새 프로젝트 → SQL Editor에서 `supabase/migrations/001_init.sql`, `002_workflow.sql`, `003_providers.sql` 순서로 실행
+1. 새 프로젝트 → SQL Editor에서 `supabase/migrations/001_init.sql`, `002_workflow.sql`, `003_providers.sql`, `004_learning_notify.sql` 순서로 실행
 2. Authentication → Users → 관리자 계정 생성(이메일·비밀번호)
 3. SQL: `insert into admins (email) values ('관리자 이메일');`
 4. Settings → API에서 `URL`, `anon key`, `service_role key` 복사
@@ -50,7 +50,10 @@
 3. `</body>` 앞에 `<script src="https://사이트/sync.js" data-slug="today" defer></script>`
 4. 같은 HTML을 관리자 [랜딩 템플릿]에도 등록(슬롯 정의용). 유튜브·인스타 링크를 기존 도메인으로 보내려면 설정의 사이트 URL 대신 링크 규칙(`lib/pipeline.ts`의 `landingLink`)을 수정
 
-## 7. 에이전트 연결 (선택)
+## 7. 이메일 알림 (권장)
+Vercel 에 `RESEND_API_KEY`+`EMAIL_FROM` 또는 `SMTP_*`, 그리고 `CRON_SECRET` 을 넣고 → 관리자 설정 → 📧 이메일 알림에서 받는 주소 저장 → 테스트 메일. 자세히: [LEARNING-NOTIFY.md](LEARNING-NOTIFY.md)
+
+## 8. 에이전트 연결 (선택)
 Claude Code·Codex에서 스킬로 공장을 조작하려면 Vercel에 `MCP_TOKEN` 을 넣고 [AGENTS-SKILLS.md](AGENTS-SKILLS.md)의 "연결"을 따릅니다.
 
 ## 로컬 실행

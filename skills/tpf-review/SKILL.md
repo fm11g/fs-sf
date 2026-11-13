@@ -20,6 +20,8 @@ description: 검수 대기 중인 단계 산출물을 SOP 체크리스트로 검
    - "고쳐" → `tpf run <id> <step> --feedback "…"` 후 결과를 다시 검수
    - 서버 AI 검수자에게 맡기려면 `tpf ai-decide <id> <step> [--apply]`
 
+6. 검수 결과 특히 잘 된 산출물이면 운영자에게 "좋은 예로 저장할까요?"라고 묻고, 동의하면 `tpf good <id> <step> --note "잘 된 점"` — SOP 학습 재료가 된다. 반복되는 문제는 `tpf bad … --note` 로 남긴다 (`tpf-learn` 스킬).
+
 렌더(영상)는 직접 볼 수 없다. 길이·규칙 검사 결과만 말하고 영상 확인은 운영자에게 맡긴다.
 
 {{COMMON}}

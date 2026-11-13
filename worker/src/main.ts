@@ -1,4 +1,4 @@
-import { db, env, log, setStep, settings } from './env.js';
+import { db, env, log, notifySite, setStep, settings } from './env.js';
 import { render } from './render.js';
 import { publish } from './publish.js';
 
@@ -66,6 +66,7 @@ async function main() {
     if (contentId) {
       await db.from('contents').update({ status: 'failed', error: `[worker:${mode}] ${e.message}` }).eq('id', contentId);
       if (mode === 'render' || mode === 'publish') await setStep(contentId, mode, { state: 'failed', finished_at: new Date().toISOString() });
+      if (mode === 'render') await notifySite('step_failed', contentId, 'render', e.message);
       await log(contentId, mode, 'failed', e.message);
     }
     process.exit(1);

@@ -43,3 +43,16 @@ export async function syncCurrent(contentId: string) {
   const cur = order.find((k) => (data || []).find((r: any) => r.step === k)?.state !== 'approved') || 'done';
   await db.from('contents').update({ current_step: cur }).eq('id', contentId);
 }
+
+/** 사이트의 알림 API 호출 (메일 발송은 사이트 한 곳에서). 실패해도 워커는 계속 */
+export async function notifySite(event: string, contentId: string, step?: string, message?: string) {
+  try {
+    const site = (process.env.SITE_URL || '').replace(/\/$/, '');
+    if (!site || !process.env.WORKER_SECRET) return;
+    await fetch(`${site}/api/notify`, {
+      method: 'POST', signal: AbortSignal.timeout(20000),
+      headers: { 'content-type': 'application/json', 'x-worker-secret': process.env.WORKER_SECRET },
+      body: JSON.stringify({ event, contentId, step, message }),
+    });
+  } catch (e: any) { console.warn('알림 실패:', e.message); }
+}

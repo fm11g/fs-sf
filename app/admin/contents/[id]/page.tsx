@@ -20,10 +20,12 @@ export default function Workbench({ params }: { params: { id: string } }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState('');
   const [edit, setEdit] = useState(false);
+  const [exemplars, setExemplars] = useState<any[]>([]);
+  const [learnMsg, setLearnMsg] = useState<{ text: string; step?: string } | null>(null);
 
   const load = useCallback(async () => {
     const d = await api(`/api/contents/${params.id}`);
-    setC(d.content); setVariant(d.variant); setSteps(d.steps); setJobs(d.jobs || []);
+    setC(d.content); setVariant(d.variant); setSteps(d.steps); setJobs(d.jobs || []); setExemplars(d.exemplars || []);
     setSel((cur) => cur || (STEP_DEFS.find((x) => d.steps[x.key]?.state !== 'approved')?.key ?? 'publish'));
   }, [params.id]);
 
@@ -52,9 +54,32 @@ export default function Workbench({ params }: { params: { id: string } }) {
     await load();
   };
   const run = (feedback?: string) => act('run', async () => { await api(`/api/pipeline/${sel}`, { contentId: c.id, feedback }); setNote(''); });
+  /** 학습 제안 생성은 화면을 막지 않고 뒤에서 */
+  const triggerLearn = (step: string) => {
+    setLearnMsg({ text: 'SOP 학습 제안을 만드는 중… (좋은 예가 쌓였습니다)', step });
+    api('/api/learn', { action: 'propose', step })
+      .then((r) => setLearnMsg({ text: r.auto_applied?.length ? `SOP 자동 보완 ${r.auto_applied.length}건 반영됨` : `SOP 학습 제안 ${r.proposal?.changes?.length ?? 0}건이 생겼습니다 — 검토 후 반영하세요`, step }))
+      .catch((e) => setLearnMsg({ text: `학습 제안 실패: ${e.message}`, step }));
+  };
+  const afterDecide = (r: any) => {
+    if (r?.learned_edit) setLearnMsg({ text: '직접 고친 내용이 "수정 예"로 저장되어 SOP 학습에 쓰입니다', step: sel });
+    if (r?.should_propose) triggerLearn(sel);
+  };
   const decideStep = (decision: 'approve' | 'reject') => act(decision, async () => {
     if (decision === 'reject' && !note.trim()) throw new Error('반려 사유(=재작업 지시)를 적어 주세요');
-    await api('/api/steps/decide', { contentId: c.id, step: sel, decision, note }); setNote('');
+    afterDecide(await api('/api/steps/decide', { contentId: c.id, step: sel, decision, note })); setNote('');
+  });
+  const mark = (kind: 'good' | 'bad') => act('mark', async () => {
+    if (kind === 'bad' && !note.trim()) throw new Error('무엇이 아쉬운지 메모란에 적어 주세요 (SOP 학습 근거가 됩니다)');
+    const r = await api('/api/exemplars', { contentId: c.id, step: sel, kind, note });
+    setLearnMsg({ text: `${kind === 'good' ? '👍 좋은 예' : '👎 아쉬운 예'}로 저장 — 이 단계 학습 재료 ${r.counts.unused_signal}/${r.learn_min}`, step: sel });
+    setNote('');
+    if (r.should_propose) triggerLearn(sel);
+  });
+  const approveGood = () => act('approve', async () => {
+    const r = await api('/api/exemplars', { contentId: c.id, step: sel, kind: 'good', note });
+    afterDecide({ ...(await api('/api/steps/decide', { contentId: c.id, step: sel, decision: 'approve', note })), should_propose: r.should_propose });
+    setNote('');
   });
   const aiDecide = (apply: boolean) => act('ai', () => api('/api/steps/ai-decide', { contentId: c.id, step: sel, apply }));
   const save = (patch: any) => act('save', () => api(`/api/contents/${c.id}`, patch, 'PATCH'));
@@ -118,6 +143,12 @@ export default function Workbench({ params }: { params: { id: string } }) {
             </div>
             {blocked.length > 0 && <p className="warnline">상위 단계 승인이 먼저 필요합니다: {blocked.map((b) => stepDef(b).label).join(', ')}</p>}
             {row.state === 'stale' && <p className="warnline">상위 산출물이 바뀌었습니다. 다시 실행하거나, 그대로 써도 되면 승인하세요.</p>}
+            {learnMsg && learnMsg.step === sel && <p className="learnline">🧠 {learnMsg.text} · <Link href={`/admin/sop?step=${sel}`}>SOP 학습 보기</Link></p>}
+            {exemplars.filter((x) => x.step === sel).map((x) => (
+              <span key={x.id} className={`tag ${x.kind === 'bad' ? 'rejected' : 'approved'}`} style={{ marginRight: 6 }} title={x.note || ''}>
+                {x.kind === 'good' ? '👍 좋은 예' : x.kind === 'bad' ? '👎 아쉬운 예' : '✍️ 수정 예'}{x.used_in ? ` · SOP 반영 #${x.used_in}` : ''}
+              </span>
+            ))}
             {row.decided_by && <p className="mute">결정: {row.decided_by === 'human' ? '사람' : row.decided_by === 'ai' ? 'AI' : '자동'} · {row.decision_note || ''}</p>}
 
             {def.kind === 'ai' && (
@@ -129,6 +160,7 @@ export default function Workbench({ params }: { params: { id: string } }) {
                   {canDecide && <>
                     <button className="ok" disabled={!!busy} onClick={() => decideStep('approve')}>승인</button>
                     <button className="ok" disabled={!!busy} onClick={approveAndGo}>승인하고 계속 진행 ▶</button>
+                    <button className="ok" disabled={!!busy} onClick={approveGood} title="승인하면서 좋은 예로 저장 (메모 = 좋은 이유)">승인 + 👍</button>
                     <button disabled={!!busy} onClick={() => aiDecide(false)}>{busy === 'ai' ? 'AI 검수 중…' : '🤖 AI에게 판단 맡기기'}</button>
                     <button disabled={!!busy} onClick={() => aiDecide(true)}>🤖 AI 판단 + 미달이면 자동 수정</button>
                   </>}
@@ -136,8 +168,12 @@ export default function Workbench({ params }: { params: { id: string } }) {
                 {output != null && (
                   <div className="row" style={{ marginTop: 8, alignItems: 'stretch' }}>
                     <textarea style={{ flex: 1, minHeight: 54, fontFamily: 'inherit', fontSize: 14 }} value={note} onChange={(e) => setNote(e.target.value)}
-                      placeholder={'수정 지시 / 반려 사유 — 예) "2번 훅으로 바꿔줘", "숫자를 첫 문장으로", "더 단호한 어조"'} />
+                      placeholder={'수정 지시 / 반려 사유 / 좋은·아쉬운 이유 — 예) "2번 훅으로 바꿔줘", "숫자를 첫 문장에 둔 게 좋음"'} />
                     <div style={{ display: 'grid', gap: 6 }}>
+                      <div className="row" style={{ gap: 6 }}>
+                        <button disabled={!!busy} onClick={() => mark('good')} title="메모란 = 좋은 이유. SOP 학습 재료로 저장">👍 좋은 예</button>
+                        <button disabled={!!busy} onClick={() => mark('bad')} title="메모란 = 아쉬운 점">👎 아쉬운 예</button>
+                      </div>
                       <button disabled={!!busy || !note.trim()} onClick={() => run(note)}>이 지시대로 재생성</button>
                       <button disabled={!!busy || !note.trim() || !canDecide} onClick={() => decideStep('reject')}>반려(사유 저장)</button>
                     </div>

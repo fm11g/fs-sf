@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { FREEDOM_KO, GATE_KO, STEP_DEFS, type StepKey } from '@/lib/steps';
+import LearnPanel from './LearnPanel';
 
 export default function SopPage() {
   const [sops, setSops] = useState<any[]>([]);
@@ -10,12 +11,14 @@ export default function SopPage() {
   const [versions, setVersions] = useState<any[]>([]);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
+  const [lc, setLc] = useState<Record<string, any>>({});
 
   const load = async (step = sel) => {
     const d = await api('/api/sop');
     setSops(d.sops);
     setDraft({ ...d.sops.find((s: any) => s.step === step) });
     setVersions((await api('/api/sop', { action: 'versions', step })).versions);
+    api('/api/learn').then((r) => setLc(r.counts)).catch(() => {});
   };
   useEffect(() => {
     const q = new URLSearchParams(location.search).get('step') as StepKey | null;
@@ -40,7 +43,7 @@ export default function SopPage() {
   return (
     <>
       <h1>SOP · AI 제어</h1>
-      <p className="mute" style={{ marginTop: -12 }}>단계마다 AI가 무엇에 집중할지(md), 얼마나 자유롭게 일할지(자유도), 누가 결정할지(결정 방식)를 정합니다. 저장하면 다음 실행부터 바로 반영됩니다.</p>
+      <p className="mute" style={{ marginTop: -12 }}>단계마다 AI가 무엇에 집중할지(md), 얼마나 자유롭게 일할지(자유도), 누가 결정할지(결정 방식)를 정합니다. 직접 고쳐도 되고, 아래 🧠 학습 제안으로 좋은 결과물의 패턴을 반영할 수도 있습니다. 모든 변경은 이력에 남습니다.</p>
       <div className="soplay">
         <div style={{ display: 'grid', gap: 4 }}>
           {STEP_DEFS.map((d) => {
@@ -48,7 +51,7 @@ export default function SopPage() {
             return (
               <button key={d.key} className={`rail-item ${sel === d.key ? 'on' : ''}`} style={{ gridTemplateColumns: '1fr auto auto' }} onClick={() => pick(d.key)}>
                 <span><b>{d.no}</b> {d.label}</span>
-                <span className="mute">자유 {s?.freedom}</span>
+                <span className="mute">자유 {s?.freedom}{lc[d.key]?.pending_proposals ? <b style={{ color: '#6b21a8' }}> · 제안</b> : lc[d.key]?.counts?.unused_signal ? ` · 👍${lc[d.key].counts.unused_signal}` : ''}</span>
                 <span title={GATE_KO[s?.gate]}>{s?.gate === 'ai' ? '🤖' : s?.gate === 'auto' ? '⏩' : '👤'}</span>
               </button>
             );
@@ -93,6 +96,7 @@ export default function SopPage() {
             </div>
             {draft.isDefault && <p className="mute">현재 저장소의 기본 SOP를 사용 중입니다. 저장하면 이 값이 우선합니다.</p>}
           </div>
+          {def.kind === 'ai' && <LearnPanel step={sel} current={draft.content} mode={lc[sel]?.mode} onChanged={() => load(sel)} />}
           <details className="card">
             <summary><b>변경 이력 ({versions.length})</b></summary>
             <table><tbody>

@@ -44,6 +44,15 @@ const HELP = `tpf <명령> [인자] [--옵션]
   submit <id> <step> <file.json> [--agent codex]   만든 JSON 제출
   set-output <id> <step> <file.json> 산출물 직접 교체
 
+SOP 학습 (좋은 결과물 → SOP 보완)
+  good <id> <step> [--note "좋은 이유"]     👍 좋은 예로 저장
+  bad <id> <step> --note "아쉬운 점"        👎 아쉬운 예로 저장
+  learn [step]                             학습 재료 현황 (step 없으면 전체)
+  learn <step> --propose [--force]         지금 SOP 보완 제안 만들기
+  proposals [step] [--status pending]      제안 목록
+  proposal apply <pid> [--only 0,2] [--note …]   선택 반영 (번호는 0부터)
+  proposal reject <pid> [--note …] | proposal revert <pid>
+
 SOP
   sop list | sop get <step> | sop set <step> [--file f.md] [--freedom 0-3] [--gate manual|ai|auto] [--provider auto|claude|openai|oss] [--note "…"]
 
@@ -113,6 +122,24 @@ async function main() {
     case 'brief': return out(await call('step_brief', { content_id: await id(a1), step: need(a2, 'step'), ...(flags.feedback ? { feedback: flags.feedback } : {}) }));
     case 'submit': return out(await call('step_submit', { content_id: await id(a1), step: need(a2, 'step'), output: readJson(a3), agent: flags.agent || process.env.TPF_AGENT || 'agent' }));
     case 'set-output': return out(await call('step_update_output', { content_id: await id(a1), step: need(a2, 'step'), output: readJson(a3) }));
+    case 'good':
+    case 'bad': {
+      if (cmd === 'bad') need(flags.note, '--note (아쉬운 점)');
+      const r = await call('exemplar_mark', { content_id: await id(a1), step: need(a2, 'step'), kind: cmd, note: flags.note || '' });
+      out({ saved: r.exemplar?.id, counts: r.counts, learn_min: r.learn_min, should_propose: r.should_propose });
+      if (r.should_propose) console.log(`→ 학습 재료가 충분합니다: tpf learn ${a2} --propose`);
+      return;
+    }
+    case 'learn':
+      if (a1 && flags.propose) return out(await call('sop_learn_propose', { step: a1, force: !!flags.force }));
+      return out(await call('sop_learn_status', a1 ? { step: a1 } : {}));
+    case 'proposals': return out(await call('sop_proposals', { ...(a1 ? { step: a1 } : {}), ...(flags.status ? { status: flags.status } : {}) }));
+    case 'proposal': {
+      const pid = Number(need(a2, '제안 번호'));
+      if (a1 === 'apply') return out(await call('sop_proposal_decide', { id: pid, decision: 'apply', ...(flags.only ? { selected: String(flags.only).split(',').map(Number) } : {}), note: flags.note || 'CLI' }));
+      if (a1 === 'reject' || a1 === 'revert') return out(await call('sop_proposal_decide', { id: pid, decision: a1, note: flags.note || '' }));
+      break;
+    }
     case 'sop': {
       if (a1 === 'list') return out(await call('sop_list'));
       if (a1 === 'get') { const s = await call('sop_get', { step: need(a2, 'step') }); return flags.json ? out(s) : out(`# 자유도 ${s.freedom} · 결정 ${s.gate} · 제공자 ${s.provider || 'auto'}\n\n${s.content}`); }
