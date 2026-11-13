@@ -12,6 +12,7 @@ const NAV: { href: string; label: string; block: string; ext?: boolean }[] = [
   { href: '/admin/channels', label: '채널 성과', block: 'channels' },
   { href: '/admin/metrics', label: '작업 효율', block: 'metrics' },
   { href: '/admin/sop', label: 'SOP · AI 제어', block: 'sop' },
+  { href: '/admin/models', label: 'AI 모델', block: 'settings' },
   { href: '/admin/landing', label: '랜딩 템플릿', block: 'landing_tpl' },
   { href: '/admin/leads', label: '신청 내역', block: 'leads' },
   { href: '/admin/settings', label: '설정 · BGM', block: 'settings' },
@@ -45,7 +46,7 @@ export default function Shell({ me, children }: { me: Me; children: React.ReactN
             <Link href="/l/today" target="_blank">오늘 랜딩 ↗</Link>
           </>}
           <div className="acct">
-            <span title={me.email}>{me.name || me.email.split('@')[0]} <small className={`role ${me.role}`}>{me.role === 'owner' ? '대표' : '직원'}</small></span>
+            <span title={me.username || me.email}>{me.name || me.username || me.email.split('@')[0]} <small className={`role ${me.role}`}>{me.role === 'owner' ? '대표' : '직원'}</small></span>
             <a href="#" onClick={(e) => { e.preventDefault(); changePw(); }}>비밀번호 변경</a>
             <a href="#" onClick={(e) => { e.preventDefault(); logout(); }}>로그아웃</a>
           </div>

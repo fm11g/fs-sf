@@ -49,7 +49,7 @@ node bin/tpf.mjs providers           # 연결 확인
 
 | 제공자 | 필요한 환경변수 | 조사 단계 웹검색 |
 |---|---|---|
-| `claude` | `ANTHROPIC_API_KEY` (`CLAUDE_MODEL`) | 내장 |
+| `claude` | `ANTHROPIC_API_KEY` (모델·생각 깊이: 관리자 [AI 모델]에서 작업별 선택) | 내장 |
 | `openai` | `OPENAI_API_KEY`, `OPENAI_MODEL` | 내장 (Responses API `web_search`) |
 | `oss` | `OSS_BASE_URL`, `OSS_MODEL` (`OSS_API_KEY`) — OpenAI 호환 `/chat/completions` | 없음 → `TAVILY_API_KEY` 또는 `SEARXNG_URL` 로 검색 결과 주입 |
 

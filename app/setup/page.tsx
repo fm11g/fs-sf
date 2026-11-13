@@ -1,11 +1,10 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { sbBrowser } from '@/lib/supabase/client';
 
 /** 첫 가입: 대표 계정이 없을 때만 열림 → 만들고 바로 로그인 → 연결·키 입력으로 이동 */
 export default function Setup() {
   const [st, setSt] = useState<{ needed: boolean; ready: boolean; error?: string } | null>(null);
-  const [f, setF] = useState({ name: '', email: '', password: '', password2: '' });
+  const [f, setF] = useState({ name: '', username: '', email: '', password: '', password2: '' });
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
   useEffect(() => { fetch('/api/setup').then((r) => r.json()).then((d) => { if (d.ready && !d.needed) location.replace('/login'); else setSt(d); }); }, []);
@@ -17,8 +16,8 @@ export default function Setup() {
     const r = await fetch('/api/setup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(f) });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) { setBusy(false); return setMsg(d.error || '실패'); }
-    const { error } = await sbBrowser().auth.signInWithPassword({ email: f.email.trim().toLowerCase(), password: f.password });
-    if (error) { setBusy(false); return setMsg(`계정은 만들어졌습니다. 로그인 화면에서 로그인하세요 (${error.message})`); }
+    const lr = await fetch('/api/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ login: f.username, password: f.password }) });
+    if (!lr.ok) { setBusy(false); return setMsg('계정은 만들어졌습니다. 로그인 화면에서 아이디로 로그인하세요.'); }
     location.href = '/admin/keys?welcome=1';
   };
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF({ ...f, [k]: e.target.value });
@@ -33,7 +32,8 @@ export default function Setup() {
         </p>
         {st && !st.ready && <p style={{ color: 'crimson', margin: 0, fontSize: 13 }}>⚠ {st.error}</p>}
         <input placeholder="이름 (예: 최지웅)" value={f.name} onChange={set('name')} style={inp} />
-        <input placeholder="이메일 (로그인 아이디)" type="email" required value={f.email} onChange={set('email')} style={inp} />
+        <input placeholder="아이디 (영문 소문자·숫자 3~20자)" required autoCapitalize="none" autoComplete="username" value={f.username} onChange={(e) => setF({ ...f, username: e.target.value.toLowerCase().replace(/\s/g, '') })} style={inp} />
+        <input placeholder="이메일 (선택 · 작업 알림 받을 주소)" type="email" value={f.email} onChange={set('email')} style={inp} />
         <input placeholder="비밀번호 (영문+숫자 8자 이상)" type="password" required value={f.password} onChange={set('password')} style={inp} />
         <input placeholder="비밀번호 확인" type="password" required value={f.password2} onChange={set('password2')} style={inp} />
         <button disabled={busy || !st?.ready} style={{ ...inp, background: '#0B1B3F', color: '#fff', border: 0, cursor: 'pointer' }}>{busy ? '만드는 중…' : '대표 계정 만들기'}</button>

@@ -3,7 +3,7 @@
 > 빠른 길: `setup/README.md` (SQL 한 번 · Vercel 3개 · GitHub 2개 · 첫 가입)
 
 ## 1. Supabase
-1. 새 프로젝트 → SQL Editor에서 `setup/supabase-all-in-one.sql` 한 번 실행 (= migrations 001~007)
+1. 새 프로젝트 → SQL Editor에서 `setup/supabase-all-in-one.sql` 한 번 실행 (= migrations 001~008)
 2. Settings → API에서 `URL`, `anon key`, `service_role key` 복사
 3. 관리자 계정은 SQL 로 넣지 않습니다 — 배포 후 첫 접속 때 **대표 계정 만들기** 화면에서 생성
 
@@ -15,9 +15,9 @@
 ## 3. Vercel
 1. 저장소 Import (Framework: Next.js, Root: 저장소 루트)
 2. Environment Variables: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` 세 개만
-3. 배포 → 사이트 접속 → 대표 계정 만들기 → **연결·키** 메뉴에서 AI 키(하나 이상)·GitHub 저장소/토큰(Contents·Secrets 읽기/쓰기)·Fish Audio·유튜브·인스타·이메일 입력
+3. 배포 → 사이트 접속 → 대표 계정 만들기(아이디 로그인, 이메일 선택) → **연결·키** 메뉴에서 AI 키(하나 이상)·GitHub 저장소/토큰(Contents·Secrets 읽기/쓰기)·Fish Audio·유튜브·인스타·이메일 입력
    (`.env.example` 은 로컬 개발용. 환경변수와 관리자 입력값이 둘 다 있으면 관리자 입력값 우선)
-4. **직원 계정** 메뉴에서 직원 추가·권한 블록 지정. 플랜은 Pro 권장(함수 300초)
+4. **AI 모델** 메뉴에서 작업별 모델·생각 깊이 선택, **직원 · 권한** 메뉴에서 직원 추가·권한 블록 지정. 플랜은 Pro 권장(함수 300초)
 
 ## 4. 채널 연결
 **유튜브**

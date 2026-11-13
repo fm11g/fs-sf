@@ -3,7 +3,7 @@ import { STEP_DEFS, type StepKey } from './steps';
 
 export type Level = 'view' | 'work';
 export type Perms = Record<string, Level>;
-export type Me = { email: string; name: string | null; role: 'owner' | 'staff' | 'worker'; perms: Perms };
+export type Me = { email: string; username?: string | null; name: string | null; role: 'owner' | 'staff' | 'worker'; perms: Perms };
 
 export type Block = { key: string; label: string; group: '화면' | '공정 단계'; desc: string; href?: string; workOnly?: boolean };
 
@@ -55,7 +55,7 @@ export function cleanPerms(p: any): Perms {
 /** 경로 → 필요한 블록 (화면 숨김용. 데이터는 API 에서 다시 막음) */
 export function pathBlock(path: string): string | null {
   if (path === '/admin' || path.startsWith('/admin/contents')) return 'board';
-  if (path.startsWith('/admin/settings')) return 'settings';
+  if (path.startsWith('/admin/settings') || path.startsWith('/admin/models')) return 'settings';
   if (path.startsWith('/admin/keys')) return 'keys';
   if (path.startsWith('/admin/members')) return 'members';
   const b = BLOCKS.find((x) => x.href && x.href !== '/admin' && path.startsWith(x.href));

@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════════
--- 오늘의 정책자금 숏폼 공장 — Supabase 전체 설치 SQL (001 ~ 007 통합)
+-- 오늘의 정책자금 숏폼 공장 — Supabase 전체 설치 SQL (001 ~ 008 통합)
 -- 사용법: Supabase 대시보드 → SQL Editor → New query → 전체 붙여넣기 → Run
 -- 여러 번 실행해도 안전합니다(이미 있는 것은 건너뜀). 예전 버전을 이미 실행했어도 그대로 다시 실행하면 됩니다.
 -- 관리자 이메일은 여기서 넣지 않습니다: 배포 후 사이트에 처음 접속하면 '대표 계정 만들기' 화면이 나옵니다.
@@ -578,6 +578,25 @@ create policy admin_all on public.ref_videos for all to authenticated using (pub
 
 -- "이 영상처럼 만들기" 로 생긴 콘텐츠
 alter table public.contents add column if not exists reference_id bigint references public.ref_videos (id) on delete set null;
+
+-- ┌──────────────────────────────────────────────
+-- │ 008_username.sql
+-- └──────────────────────────────────────────────
+-- 008: 이메일 대신 아이디로 로그인
+-- 아이디만 있는 계정은 로그인용 내부 주소(아이디@users.example.com)로 Supabase 계정을 만든다. 메일은 보내지 않음.
+alter table public.admins add column if not exists username text;
+create unique index if not exists admins_username_key on public.admins (lower(username)) where username is not null;
+-- 기존 계정: 이메일 앞부분을 아이디로 (겹치면 비워 둠 → 직원·권한 화면에서 지정)
+with c as (
+  select email, lower(split_part(email, '@', 1)) as u,
+         row_number() over (partition by lower(split_part(email, '@', 1)) order by (role = 'owner') desc, created_at) as rn
+  from public.admins where username is null
+)
+update public.admins a set username = c.u
+from c
+where a.email = c.email and c.rn = 1
+  and c.u ~ '^[a-z0-9][a-z0-9._-]{2,19}$'
+  and not exists (select 1 from public.admins b where lower(b.username) = c.u);
 
 -- 확인용: 테이블 목록 (21개가 나오면 완료)
 select table_name from information_schema.tables where table_schema = 'public' order by table_name;

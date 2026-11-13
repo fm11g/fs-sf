@@ -10,7 +10,7 @@ import { sbAdmin } from './supabase/server';
 export type KeyDef = { key: string; label: string; group: string; secret?: boolean; auto?: boolean; multiline?: boolean; help?: string; placeholder?: string };
 
 export const KEY_GROUPS: { group: string; desc: string }[] = [
-  { group: 'AI', desc: '하나 이상 필요. 여러 개 넣으면 실패 시 다음 제공자로 자동 전환' },
+  { group: 'AI', desc: '하나 이상 필요. 여러 개 넣으면 실패 시 다음 제공자로 자동 전환 · 작업별 모델과 생각 깊이는 [AI 모델] 메뉴에서 선택' },
   { group: '워커(GitHub)', desc: '렌더·업로드·채널 수집·참고 영상 분석을 돌리는 GitHub Actions' },
   { group: 'AI 목소리', desc: '렌더 단계 TTS' },
   { group: '유튜브', desc: '업로드·댓글·채널 성과' },
@@ -22,9 +22,8 @@ export const KEY_GROUPS: { group: string; desc: string }[] = [
 
 export const KEY_DEFS: KeyDef[] = [
   { key: 'ANTHROPIC_API_KEY', label: 'Claude API 키', group: 'AI', secret: true, placeholder: 'sk-ant-…' },
-  { key: 'CLAUDE_MODEL', label: 'Claude 모델', group: 'AI', placeholder: 'claude-sonnet-5-5' },
   { key: 'OPENAI_API_KEY', label: 'OpenAI API 키', group: 'AI', secret: true, placeholder: 'sk-…' },
-  { key: 'OPENAI_MODEL', label: 'OpenAI 모델', group: 'AI', placeholder: 'gpt-5.5' },
+  { key: 'OPENAI_MODEL', label: 'OpenAI 기본 모델', group: 'AI', placeholder: 'gpt-5.5', help: 'OpenAI 로 넘어갔을 때 쓰는 모델 (작업별로 다르게 하려면 AI 모델 메뉴)' },
   { key: 'OSS_BASE_URL', label: '오픈소스 모델 주소', group: 'AI', placeholder: 'https://openrouter.ai/api/v1', help: 'OpenAI 호환 주소 (Ollama·vLLM·OpenRouter·Groq)' },
   { key: 'OSS_API_KEY', label: '오픈소스 모델 키', group: 'AI', secret: true },
   { key: 'OSS_MODEL', label: '오픈소스 모델 이름', group: 'AI', placeholder: 'qwen/qwen3-235b-a22b' },

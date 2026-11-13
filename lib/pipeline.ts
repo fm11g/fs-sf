@@ -220,7 +220,7 @@ async function finalize(step: StepKey, c: any, s: Settings, raw: any, prep: Prep
         const fix = await ask<{ values: Record<string, string> }>({
           system: '당신은 카피 편집자입니다. 의미를 유지하면서 글자수(공백 포함, \\n 제외)를 줄입니다.',
           prompt: `다음 문구를 각 최대 글자수 이하로 줄이세요.\n${over.map((o) => `- ${o.key} (최대 ${o.max}자): "${o.value}"`).join('\n')}\nJSON: { "values": { "key": "문구" } }`,
-          chain: s.llm_chain,
+          chain: s.llm_chain, task: 'fix',
         });
         usage = add(usage, fix.usage);
         values = { ...values, ...fix.data.values };
@@ -244,7 +244,7 @@ async function generate(step: StepKey, c: any, s: Settings, sop: Sop, feedback?:
   const req = {
     system: prep.system, prompt: prep.prompt, webSearch: prep.webSearch, maxTokens: prep.maxTokens,
     mcp: step === 'research' ? s.mcp_servers : undefined,
-    chain: s.llm_chain, prefer: prefer || sop.provider,
+    chain: s.llm_chain, prefer: prefer || sop.provider, task: step,
   };
   // 점수 기반 최적화 ②: 후보 N개(SOP 의 best_of) → 운영자 채점 기준으로 점수 예측 → 최고 선택
   const n = Math.max(1, Math.min(4, Number(sop.best_of || 1)));
@@ -276,7 +276,7 @@ async function generate(step: StepKey, c: any, s: Settings, sop: Sop, feedback?:
 async function review(step: StepKey, c: any, s: Settings, sop: Sop, output: any, checks: Check[]) {
   const inputs = Object.fromEntries(await Promise.all(stepDef(step).deps.map(async (d) => [d, await getOutput(d, c)])));
   if (step === 'offer') (inputs as any).available_offers = s.offers;
-  const res = await ask<any>({ ...reviewPrompt(s, step, sop, inputs, output, checks), maxTokens: 4000, chain: s.llm_chain });
+  const res = await ask<any>({ ...reviewPrompt(s, step, sop, inputs, output, checks), maxTokens: 4000, chain: s.llm_chain, task: 'review' });
   if (hasError(checks)) res.data.verdict = 'revise';
   return res;
 }

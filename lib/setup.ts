@@ -42,3 +42,22 @@ export function checkPassword(pw: string) {
 }
 export const normEmail = (e: any) => String(e || '').trim().toLowerCase();
 export const isEmail = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+
+// ── 아이디 로그인 ─────────────────────────────────────────────────────
+/** 아이디만 있는 계정의 로그인용 내부 주소 (RFC 2606 예약 도메인 → 메일이 실제로 가지 않음) */
+export const ID_DOMAIN = 'users.example.com';
+export const normId = (v: any) => String(v || '').trim().toLowerCase();
+export function checkUsername(id: string) {
+  if (!/^[a-z0-9][a-z0-9._-]{2,19}$/.test(id)) return '아이디는 영문 소문자·숫자·. _ - 로 3~20자 (첫 글자는 영문/숫자)';
+  return null;
+}
+export const idEmail = (id: string) => `${id}@${ID_DOMAIN}`;
+export const isIdEmail = (e?: string | null) => !!e && e.endsWith(`@${ID_DOMAIN}`);
+
+/** 로그인 입력(아이디 또는 이메일) → Supabase 로그인 이메일 */
+export async function resolveLogin(login: string): Promise<string> {
+  const v = normId(login);
+  if (v.includes('@')) return v;
+  const { data } = await sbAdmin().from('admins').select('email').eq('username', v).maybeSingle();
+  return data?.email || idEmail(v);
+}

@@ -107,7 +107,7 @@ ${ANALYSIS_SCHEMA}`;
 
   const res = await ask<any>({
     system: '당신은 숏폼(유튜브 쇼츠·인스타 릴스) 구조 분석가이자 PD입니다. 잘 된 영상을 초 단위로 해부해 다른 주제에도 재현 가능한 규칙으로 바꿉니다.',
-    prompt, images: frames.map((f) => f.url), maxTokens: 6000, chain: s.llm_chain,
+    prompt, images: frames.map((f) => f.url), maxTokens: 6000, chain: s.llm_chain, task: 'reference',
   });
   const a = res.data || {};
   a._provider = `${res.provider}/${res.model}`;

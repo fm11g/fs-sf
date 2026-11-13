@@ -12,9 +12,9 @@ export async function getMe(req?: NextRequest): Promise<Me | null> {
   const { data } = await sbServer().auth.getUser();
   const email = data.user?.email?.toLowerCase();
   if (!email) return null;
-  const { data: row } = await sbAdmin().from('admins').select('email, role, name, perms, active').eq('email', email).maybeSingle();
+  const { data: row } = await sbAdmin().from('admins').select('email, username, role, name, perms, active').eq('email', email).maybeSingle();
   if (!row || row.active === false) return null;
-  return { email, name: row.name ?? null, role: row.role === 'staff' ? 'staff' : 'owner', perms: row.perms || {} };
+  return { email, username: row.username ?? null, name: row.name ?? null, role: row.role === 'staff' ? 'staff' : 'owner', perms: row.perms || {} };
 }
 
 /**

@@ -8,6 +8,7 @@ import { useMe } from '../../MeContext';
 import type { Content, StepRow } from '@/lib/types';
 import { CopyEditor, DesignEditor, JsonEditor, LandingEditor, Readable, ScriptEditor } from './editors';
 import RatingBox from './RatingBox';
+import ModelChip from './ModelChip';
 
 const fmtMs = (ms: number) => (ms >= 60000 ? `${Math.round(ms / 6000) / 10}분` : `${Math.round(ms / 1000)}초`);
 
@@ -137,10 +138,10 @@ export default function Workbench({ params }: { params: { id: string } }) {
         <div>
           <div className="card">
             <div className="row" style={{ justifyContent: 'space-between' }}>
-              <h2 style={{ margin: 0 }}>{def.no}. {def.label} <span className={`tag ${row.state}`}>{STATE_KO[row.state]}</span></h2>
+              <h2 style={{ margin: 0 }}>{def.no}. {def.label} <span className={`tag ${row.state}`}>{STATE_KO[row.state]}</span> {def.kind === 'ai' && <ModelChip step={sel} owner={me?.role === 'owner'} />}</h2>
               <span className="mute">
                 결정: {GATE_KO[sop?.gate] || '-'} · 자유도 {FREEDOM_KO[sop?.freedom ?? 2]} · 시도 {row.attempts}회
-                {row.provider && ` · ${row.provider}${row.model ? '/' + row.model : ''}`}{row.work_ms > 0 && ` · 작업 ${fmtMs(Number(row.work_ms))}`}{row.wait_ms > 0 && ` · 대기 ${fmtMs(Number(row.wait_ms))}`} {can(me, 'sop') && <>· <Link href={`/admin/sop?step=${sel}`}>SOP 수정</Link></>}
+                {row.provider && ` · 지난 실행 ${row.provider}${row.model ? '/' + row.model : ''}`}{row.work_ms > 0 && ` · 작업 ${fmtMs(Number(row.work_ms))}`}{row.wait_ms > 0 && ` · 대기 ${fmtMs(Number(row.wait_ms))}`} {can(me, 'sop') && <>· <Link href={`/admin/sop?step=${sel}`}>SOP 수정</Link></>}
               </span>
             </div>
             {blocked.length > 0 && <p className="warnline">상위 단계 승인이 먼저 필요합니다: {[...new Set(blocked.map((b) => (hiddenDep(b) ? '다른 담당 단계' : stepDef(b).label)))].join(', ')}</p>}

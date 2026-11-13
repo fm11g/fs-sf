@@ -86,7 +86,7 @@ export async function buildPlan(o: { force?: boolean } = {}) {
   let provider: string | null = null;
   const warnings: string[] = [];
   try {
-    const res = await ask<any>({ ...refinePrompt(s, ins, table, draft, ins.sequence), maxTokens: 3500, chain: s.llm_chain });
+    const res = await ask<any>({ ...refinePrompt(s, ins, table, draft, ins.sequence), maxTokens: 3500, chain: s.llm_chain, task: 'editorial' });
     provider = `${res.provider}/${res.model}`;
     const refined: Slot[] = draft.map((d, i) => {
       const r = (res.data.slots || []).find((x: any) => x.date === d.date) || {};

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { guard } from '@/lib/auth';
 import { sbAdmin } from '@/lib/supabase/server';
 import { cleanPerms } from '@/lib/perms';
-import { checkPassword, isEmail, normEmail, upsertAuthUser } from '@/lib/setup';
+import { checkPassword, checkUsername, idEmail, isEmail, normEmail, normId, upsertAuthUser } from '@/lib/setup';
 
 export const dynamic = 'force-dynamic';
 const bad = (error: string, status = 400) => NextResponse.json({ error }, { status });
@@ -24,25 +24,31 @@ async function ownerCount() {
 export async function GET(req: NextRequest) {
   const g = await guard(req, 'members');
   if (g.deny) return g.deny;
-  const { data } = await sbAdmin().from('admins').select('email, role, name, perms, active, last_login_at, created_at, created_by').order('created_at');
+  const { data } = await sbAdmin().from('admins').select('email, username, role, name, perms, active, last_login_at, created_at, created_by').order('created_at');
   return NextResponse.json({ members: data || [], me: g.me.email });
 }
 
-/** 직원 추가: 이메일·임시 비밀번호·권한 블록 */
+/** 직원 추가: 아이디(필수)·이메일(선택)·임시 비밀번호·권한 블록 */
 export async function POST(req: NextRequest) {
   const g = await guard(req, 'members');
   if (g.deny) return g.deny;
   const b = await req.json().catch(() => ({}));
-  const email = normEmail(b.email);
-  if (!isEmail(email)) return bad('이메일 형식을 확인하세요');
+  const username = normId(b.username);
+  const idErr = checkUsername(username);
+  if (idErr) return bad(idErr);
+  const real = normEmail(b.email);
+  if (real && !isEmail(real)) return bad('이메일 형식을 확인하세요 (비워 둬도 됩니다)');
+  const email = real || idEmail(username);
   const pwErr = checkPassword(String(b.password || ''));
   if (pwErr) return bad(pwErr);
   const role = b.role === 'owner' ? 'owner' : 'staff';
   const db = sbAdmin();
   const { data: exists } = await db.from('admins').select('email').eq('email', email).maybeSingle();
   if (exists) return bad('이미 등록된 이메일입니다');
+  const { data: taken } = await db.from('admins').select('email').eq('username', username).maybeSingle();
+  if (taken) return bad('이미 쓰는 아이디입니다');
   try { await upsertAuthUser(email, String(b.password), b.name); } catch (e: any) { return bad(e.message, 500); }
-  const { error } = await db.from('admins').insert({ email, role, name: String(b.name || '').trim() || null, perms: role === 'owner' ? {} : cleanPerms(b.perms), active: true, created_by: g.me.email });
+  const { error } = await db.from('admins').insert({ email, username, role, name: String(b.name || '').trim() || null, perms: role === 'owner' ? {} : cleanPerms(b.perms), active: true, created_by: g.me.email });
   if (error) return bad(error.message, 500);
   return NextResponse.json({ ok: true });
 }
@@ -61,6 +67,14 @@ export async function PATCH(req: NextRequest) {
   if (b.name !== undefined) patch.name = String(b.name || '').trim() || null;
   if (b.active !== undefined) patch.active = !!b.active;
   if (b.role !== undefined) patch.role = b.role === 'owner' ? 'owner' : 'staff';
+  if (b.username !== undefined) {
+    const u = normId(b.username);
+    const e = checkUsername(u);
+    if (e) return bad(e);
+    const { data: taken } = await db.from('admins').select('email').eq('username', u).neq('email', email).maybeSingle();
+    if (taken) return bad('이미 쓰는 아이디입니다');
+    patch.username = u;
+  }
   const losingOwner = cur.role === 'owner' && cur.active && (patch.active === false || patch.role === 'staff');
   if (losingOwner && (await ownerCount()) <= 1) return bad('마지막 대표 계정은 직원으로 바꾸거나 끌 수 없습니다');
   if (b.password) {

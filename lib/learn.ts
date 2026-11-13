@@ -173,7 +173,7 @@ ${(cal || []).map((e: any) => `- ★${e.score}${e.tags?.length ? ` [${e.tags.joi
     prompt: `${outputs.map((o, i) => `## 후보 ${i}\n${clip(o, 3500)}`).join('\n\n')}
 
 JSON: { "scores": [{ "i": 0, "score": 4.2, "reason": "한 줄" }], "best": 0 }`,
-    maxTokens: 1500, chain: s.llm_chain,
+    maxTokens: 1500, chain: s.llm_chain, task: 'judge',
   });
   const scores: { i: number; score: number; reason?: string }[] = (res.data.scores || []).filter((x: any) => Number.isInteger(x.i) && x.i >= 0 && x.i < outputs.length);
   const best = scores.length ? scores.reduce((a, b) => (b.score > a.score ? b : a)).i : 0;
@@ -238,7 +238,7 @@ export async function proposeSop(step: StepKey, opts: { force?: boolean } = {}) 
   const examples = [...signal, ...low];
 
   const [sop, sum] = await Promise.all([getSop(step), learningSummary(step)]);
-  const res = await ask<any>({ ...patchPrompt(step, sop.content, sum.md, examples, s.banned_phrases || []), maxTokens: 4000, chain: s.llm_chain });
+  const res = await ask<any>({ ...patchPrompt(step, sop.content, sum.md, examples, s.banned_phrases || []), maxTokens: 4000, chain: s.llm_chain, task: 'learn' });
   const changes = sanitizeChanges(res.data.changes, s.banned_phrases || []);
   if (opts.force && pend?.length) await db.from('sop_proposals').update({ status: 'superseded', decided_at: new Date().toISOString() }).eq('step', step).eq('status', 'pending');
   const { data: row, error } = await db.from('sop_proposals').insert({
@@ -296,7 +296,7 @@ JSON 스키마:
   "content": "정리된 SOP md 전문",
   "changelog": [{ "type": "merge | add | modify | remove | reorder | keep", "detail": "무엇을 왜 (근거 포함)" }]
 }`,
-    maxTokens: 6000, chain: s.llm_chain,
+    maxTokens: 6000, chain: s.llm_chain, task: 'learn',
   });
   const chk = checkRewrite(sop.content, String(res.data.content || ''), s.banned_phrases || []);
   if (!chk.ok) throw new Error(`재정리안이 안전 검사를 통과하지 못했습니다: ${chk.warns.join(', ')}`);
@@ -404,7 +404,7 @@ export async function proposeFromReferences(step: StepKey, refIds: number[]) {
 - 여러 영상에 공통이거나 반영 강도가 높은 영상의 규칙을 우선합니다. evidence 에는 참고 영상 번호.
 - 형식·구조·리듬·디자인만. 특정 영상의 문장·고유 정보를 그대로 쓰게 하는 규칙 금지. 사실·출처·금지 표현 규칙은 느슨하게 하지 않습니다.`,
     prompt: `## 현재 SOP\n${sop.content}\n\n## 참고 영상 분석\n${list.map(show).join('\n\n')}\n\n금지 표현: ${(s.banned_phrases || []).join(', ')}\n\nJSON: { "summary": "", "patterns": [{ "pattern": "", "evidence": [번호], "in_sop": "already | missing | different" }], "changes": [{ "op": "add | modify | remove", "section": "목적 | 집중 포인트 | 체크리스트 | 금지 | 사람이 결정할 것", "target": "", "text": "", "reason": "", "evidence": [번호] }] }`,
-    maxTokens: 4000, chain: s.llm_chain,
+    maxTokens: 4000, chain: s.llm_chain, task: 'learn',
   });
   const changes = sanitizeChanges(res.data.changes, s.banned_phrases || []);
   await db.from('sop_proposals').update({ status: 'superseded', decided_at: new Date().toISOString() }).eq('step', step).eq('status', 'pending');
