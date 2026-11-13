@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdmin } from '@/lib/auth';
+import { guard } from '@/lib/auth';
 import { parseSlots } from '@/lib/landing';
 import { sbAdmin } from '@/lib/supabase/server';
 
@@ -7,8 +7,8 @@ export const dynamic = 'force-dynamic';
 
 /** 템플릿 저장/수정 { id?, name, html, asset_base?, is_active? } → data-slot 자동 파싱 */
 export async function POST(req: NextRequest) {
-  const deny = await requireAdmin(req);
-  if (deny) return deny;
+  const g = await guard(req, 'landing_tpl', 'work');
+  if (g.deny) return g.deny;
   const { id, name, html, asset_base, is_active } = await req.json();
   const slots = parseSlots(html);
   if (!slots.length) return NextResponse.json({ error: 'data-slot 속성이 하나도 없습니다' }, { status: 400 });
@@ -20,4 +20,11 @@ export async function POST(req: NextRequest) {
     : await db.from('landing_templates').insert(row).select().single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data);
+}
+
+export async function GET(req: NextRequest) {
+  const g = await guard(req, 'landing_tpl');
+  if (g.deny) return g.deny;
+  const { data } = await sbAdmin().from('landing_templates').select('*').order('created_at', { ascending: false });
+  return NextResponse.json({ templates: data || [] });
 }

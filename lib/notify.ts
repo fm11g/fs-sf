@@ -1,3 +1,4 @@
+import { siteUrl } from './secrets';
 import { esc, h2, kv, layout, p, progress, proposalEmail, sendMail, stepEmail } from './email';
 import { getOutput, getSettings } from './settings';
 import { sbAdmin } from './supabase/server';
@@ -5,7 +6,7 @@ import { STATE_KO, stepDef, type StepKey } from './steps';
 
 export type NotifyEvent = 'step_done' | 'step_review' | 'step_failed' | 'render_done' | 'published' | 'sop_proposal' | 'sop_applied' | 'digest';
 
-const site = (s: any) => String(s.site_url || process.env.NEXT_PUBLIC_SITE_URL || '').replace(/\/$/, '');
+const site = (s: any) => siteUrl(s);
 
 async function record(row: Record<string, any>) {
   try { await sbAdmin().from('notifications').insert(row); } catch { /* 기록 실패는 무시 */ }

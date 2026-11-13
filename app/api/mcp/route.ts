@@ -10,6 +10,7 @@ import { board, metrics } from '@/lib/ops';
 import { getSop, listSops, saveSop } from '@/lib/sop';
 import { dispatch } from '@/lib/github';
 import { sbAdmin } from '@/lib/supabase/server';
+import { hydrateEnv } from '@/lib/secrets';
 import { AI_STEPS, STEP_DEFS, STEP_KEYS, stepDef, type StepKey } from '@/lib/steps';
 
 export const maxDuration = 300;
@@ -119,8 +120,9 @@ async function handle(m: any) {
 }
 
 export async function POST(req: NextRequest) {
+  await hydrateEnv();
   const token = process.env.MCP_TOKEN;
-  if (!token) return NextResponse.json({ error: 'MCP_TOKEN 환경변수가 설정되지 않았습니다' }, { status: 503 });
+  if (!token) return NextResponse.json({ error: 'MCP 토큰이 없습니다 — 관리자 [연결·키]에서 발급하세요' }, { status: 503 });
   if (req.headers.get('authorization') !== `Bearer ${token}`) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json(rpcErr(null, -32700, 'parse error'), { status: 400 });

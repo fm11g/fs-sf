@@ -2,8 +2,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
-import { sbBrowser } from '@/lib/supabase/client';
-import { FREEDOM_KO, GATE_KO, STATE_KO, STEP_DEFS, stepDef, type StepKey } from '@/lib/steps';
+import { FREEDOM_KO, GATE_KO, STATE_KO, STEP_DEFS as ALL_STEPS, stepDef, type StepKey } from '@/lib/steps';
+import { can, canStep } from '@/lib/perms';
+import { useMe } from '../../MeContext';
 import type { Content, StepRow } from '@/lib/types';
 import { CopyEditor, DesignEditor, JsonEditor, LandingEditor, Readable, ScriptEditor } from './editors';
 import RatingBox from './RatingBox';
@@ -23,17 +24,21 @@ export default function Workbench({ params }: { params: { id: string } }) {
   const [edit, setEdit] = useState(false);
   const [exemplars, setExemplars] = useState<any[]>([]);
   const [learnMsg, setLearnMsg] = useState<{ text: string; step?: string } | null>(null);
+  const me = useMe();
+  // 직원: 서버가 권한 블록에 있는 단계만 내려줌 → 그 단계만 레일에 표시
+  const STEP_DEFS = ALL_STEPS.filter((d) => steps[d.key]);
 
   const load = useCallback(async () => {
     const d = await api(`/api/contents/${params.id}`);
     setC(d.content); setVariant(d.variant); setSteps(d.steps); setJobs(d.jobs || []); setExemplars(d.exemplars || []);
-    setSel((cur) => cur || (STEP_DEFS.find((x) => d.steps[x.key]?.state !== 'approved')?.key ?? 'publish'));
+    const vis = ALL_STEPS.filter((x) => d.steps[x.key]);
+    setSel((cur) => cur || (vis.find((x) => d.steps[x.key]?.state !== 'approved')?.key ?? vis[vis.length - 1]?.key ?? null));
   }, [params.id]);
 
   useEffect(() => {
     load();
     api('/api/sop').then((d) => setSops(d.sops));
-    sbBrowser().from('bgm_tracks').select('*').eq('active', true).then(({ data }) => setBgms(data || []));
+    api('/api/bgm').then((d) => setBgms(d.tracks || [])).catch(() => {});
   }, [load]);
   useEffect(() => {
     if (!Object.values(steps).some((s) => s.state === 'running')) return;
@@ -41,11 +46,12 @@ export default function Workbench({ params }: { params: { id: string } }) {
     return () => clearInterval(t);
   }, [steps, load]);
 
+  if (c && !sel && !STEP_DEFS.length) return <div className="card locked"><h1>🔒 이 콘텐츠에서 볼 수 있는 단계가 없습니다</h1></div>;
   if (!c || !sel) return <p>불러오는 중…</p>;
   const def = stepDef(sel);
   const row = steps[sel];
   const sop = sops.find((s) => s.step === sel);
-  const blocked = def.deps.filter((d) => steps[d]?.state !== 'approved');
+  const blocked = def.deps.filter((d) => steps[d] && steps[d].state !== 'approved');
   const output: any = sel === 'landing' ? variant?.values : def.field ? (c as any)[def.field] : null;
 
   const act = async (name: string, fn: () => Promise<any>) => {
@@ -88,7 +94,10 @@ export default function Workbench({ params }: { params: { id: string } }) {
     await api('/api/steps/decide', { contentId: c.id, step: sel, decision: 'approve', note }); setNote('');
   }).then(auto);
 
-  const canDecide = ['review', 'stale', 'rejected'].includes(row.state) && (output != null || def.kind === 'worker');
+  const mayWork = canStep(me, sel, 'work');
+  const canDecide = mayWork && ['review', 'stale', 'rejected'].includes(row.state) && (output != null || def.kind === 'worker');
+  const canEdit = can(me, 'editor', 'work') || canStep(me, 'design', 'work');
+  const hiddenDep = (b: string) => !steps[b];
 
   return (
     <>
@@ -96,11 +105,13 @@ export default function Workbench({ params }: { params: { id: string } }) {
       <div className="row" style={{ justifyContent: 'space-between', marginBottom: 14 }}>
         <h1 style={{ margin: 0 }}>{c.topic || '새 숏폼'} <span className="mute">{c.slug}</span></h1>
         <div className="row">
-          <button className="acc" disabled={!!busy} onClick={auto}>{busy === 'auto' ? '진행 중…' : '▶ 가능한 곳까지 자동 진행'}</button>
-          <button onClick={() => confirm('이 콘텐츠를 삭제할까요?') && api(`/api/contents/${c.id}`, undefined, 'DELETE').then(() => (location.href = '/admin'))}>삭제</button>
+          {canEdit && c.design && <Link href={`/admin/contents/${c.id}/editor`}><button className="acc">🎬 영상 편집기</button></Link>}
+          {can(me, 'board', 'work') && <button className="acc" disabled={!!busy} onClick={auto}>{busy === 'auto' ? '진행 중…' : '▶ 가능한 곳까지 자동 진행'}</button>}
+          {me?.role === 'owner' && <button onClick={() => confirm('이 콘텐츠를 삭제할까요?') && api(`/api/contents/${c.id}`, undefined, 'DELETE').then(() => (location.href = '/admin'))}>삭제</button>}
         </div>
       </div>
       {c.error && <div className="card bad">{c.error}</div>}
+      {c.reference_id && <div className="slotbanner">🎞 참고 영상 #{c.reference_id} 처럼 만드는 콘텐츠 {can(me, 'references') && <Link href={`/admin/references?id=${c.reference_id}`}>분석 보기</Link>}</div>}
       {c.editorial && (
         <div className="slotbanner">📅 편성 슬롯 {c.editorial.date?.slice(5)} — <b>{[c.editorial.topic_category, c.editorial.angle, c.editorial.hook_type, c.editorial.format, c.editorial.target].filter(Boolean).join(' · ')}</b>{c.editorial.experiment ? ' [실험]' : ''}{c.editorial.title_idea ? ` · ${c.editorial.title_idea}` : ''} <Link href="/admin/editorial">편성표</Link></div>
       )}
@@ -129,11 +140,11 @@ export default function Workbench({ params }: { params: { id: string } }) {
               <h2 style={{ margin: 0 }}>{def.no}. {def.label} <span className={`tag ${row.state}`}>{STATE_KO[row.state]}</span></h2>
               <span className="mute">
                 결정: {GATE_KO[sop?.gate] || '-'} · 자유도 {FREEDOM_KO[sop?.freedom ?? 2]} · 시도 {row.attempts}회
-                {row.provider && ` · ${row.provider}${row.model ? '/' + row.model : ''}`}{row.work_ms > 0 && ` · 작업 ${fmtMs(Number(row.work_ms))}`}{row.wait_ms > 0 && ` · 대기 ${fmtMs(Number(row.wait_ms))}`} ·{' '}
-                <Link href={`/admin/sop?step=${sel}`}>SOP 수정</Link>
+                {row.provider && ` · ${row.provider}${row.model ? '/' + row.model : ''}`}{row.work_ms > 0 && ` · 작업 ${fmtMs(Number(row.work_ms))}`}{row.wait_ms > 0 && ` · 대기 ${fmtMs(Number(row.wait_ms))}`} {can(me, 'sop') && <>· <Link href={`/admin/sop?step=${sel}`}>SOP 수정</Link></>}
               </span>
             </div>
-            {blocked.length > 0 && <p className="warnline">상위 단계 승인이 먼저 필요합니다: {blocked.map((b) => stepDef(b).label).join(', ')}</p>}
+            {blocked.length > 0 && <p className="warnline">상위 단계 승인이 먼저 필요합니다: {[...new Set(blocked.map((b) => (hiddenDep(b) ? '다른 담당 단계' : stepDef(b).label)))].join(', ')}</p>}
+            {!mayWork && <p className="mute">👁 보기 권한 — 실행·수정·결정은 이 단계 작업 권한이 있는 사람이 합니다.</p>}
             {row.state === 'stale' && <p className="warnline">상위 산출물이 바뀌었습니다. 다시 실행하거나, 그대로 써도 되면 승인하세요.</p>}
             {learnMsg && learnMsg.step === sel && <p className="learnline">🧠 {learnMsg.text} · <Link href={`/admin/sop?step=${sel}`}>SOP 학습 보기</Link></p>}
             {exemplars.filter((x) => x.step === sel).map((x) => (
@@ -143,7 +154,7 @@ export default function Workbench({ params }: { params: { id: string } }) {
             ))}
             {row.decided_by && <p className="mute">결정: {row.decided_by === 'human' ? '사람' : row.decided_by === 'ai' ? 'AI' : '자동'} · {row.decision_note || ''}</p>}
 
-            {def.kind === 'ai' && (
+            {def.kind === 'ai' && mayWork && (
               <>
                 <div className="row" style={{ marginTop: 10 }}>
                   <button className="pri" disabled={!!busy || blocked.length > 0 || row.state === 'running'} onClick={() => run()}>
@@ -169,7 +180,7 @@ export default function Workbench({ params }: { params: { id: string } }) {
               </>
             )}
 
-            {sel === 'render' && (
+            {sel === 'render' && mayWork && (
               <div className="row" style={{ marginTop: 10 }}>
                 <label>BGM&nbsp;
                   <select value={c.bgm_id || ''} onChange={(e) => save({ bgm_id: e.target.value || null })}>
@@ -188,7 +199,7 @@ export default function Workbench({ params }: { params: { id: string } }) {
               </div>
             )}
 
-            {sel === 'publish' && (
+            {sel === 'publish' && mayWork && (
               <div className="row" style={{ marginTop: 10 }}>
                 {(['youtube+instagram', 'youtube', 'instagram'] as const).map((t) => (
                   <button key={t} className={t.includes('+') ? 'acc' : ''} disabled={!!busy || blocked.length > 0 || row.state === 'running'}
@@ -200,7 +211,7 @@ export default function Workbench({ params }: { params: { id: string } }) {
             )}
           </div>
 
-          {def.kind === 'ai' && output != null && (
+          {def.kind === 'ai' && output != null && mayWork && (
             <RatingBox contentId={c.id} step={sel} row={row} ratings={exemplars.filter((x) => x.step === sel)} canApprove={canDecide}
               onApprove={async (n) => afterDecide(await api('/api/steps/decide', { contentId: c.id, step: sel, decision: 'approve', note: n }))}
               onSaved={(r) => { setLearnMsg({ text: `${r.updated ? '평가 수정' : '평가 저장'} ★${r.exemplar.score} — 이 단계 학습 재료 ${r.counts.unused_signal}/${r.learn_min} · 평균 ★${r.counts.avg ?? '-'}`, step: sel }); if (r.should_propose) triggerLearn(sel); load(); }} />
@@ -244,7 +255,7 @@ export default function Workbench({ params }: { params: { id: string } }) {
             <div className="card">
               <div className="row" style={{ justifyContent: 'space-between' }}>
                 <h2 style={{ margin: 0 }}>중간 산출물</h2>
-                {output != null && sel !== 'design' && <button onClick={() => setEdit(!edit)}>{edit ? '보기' : '직접 수정'}</button>}
+                {output != null && sel !== 'design' && mayWork && <button onClick={() => setEdit(!edit)}>{edit ? '보기' : '직접 수정'}</button>}
               </div>
               {output == null && <p className="mute">아직 산출물이 없습니다.</p>}
               {output != null && !edit && sel === 'script' && (
@@ -259,7 +270,8 @@ export default function Workbench({ params }: { params: { id: string } }) {
           {edit && sel === 'copy' && <CopyEditor c={c} onSave={(v) => save({ copy: v })} />}
           {edit && sel === 'landing' && <LandingEditor slug={c.slug} variant={variant} slots={variant?.landing_templates?.slots || []} onSave={(v) => save({ landing_values: v })} />}
           {edit && ['research', 'plan', 'offer', 'post'].includes(sel) && <JsonEditor value={output} onSave={(v) => save({ [def.field!]: v })} />}
-          {!edit && sel === 'design' && c.design && <DesignEditor c={c} onSave={(v) => save({ design: v })} />}
+          {!edit && sel === 'design' && c.design && mayWork && <DesignEditor c={c} onSave={(v) => save({ design: v })} />}
+          {sel === 'design' && c.design && !mayWork && <div className="card"><Readable value={c.design} /></div>}
 
           {(sel === 'render' || sel === 'publish') && (
             <div className="card">

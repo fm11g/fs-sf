@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdmin } from '@/lib/auth';
+import { guard } from '@/lib/auth';
 import { analyzeChannels, channelInsights } from '@/lib/channels';
 import { dispatch } from '@/lib/github';
 import { getSettings } from '@/lib/settings';
@@ -9,16 +9,16 @@ export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
-  const deny = await requireAdmin(req);
-  if (deny) return deny;
+  const g = await guard(req, 'channels');
+  if (g.deny) return g.deny;
   const s = await getSettings();
   return NextResponse.json({ links: { youtube_channel: s.youtube_channel || '', instagram_account: s.instagram_account || '' }, ...(await channelInsights()) });
 }
 
 /** { action: 'save_links' | 'sync' | 'analyze' | 'set_attrs', … } */
 export async function POST(req: NextRequest) {
-  const deny = await requireAdmin(req);
-  if (deny) return deny;
+  const g = await guard(req, 'channels', 'work');
+  if (g.deny) return g.deny;
   const b = await req.json();
   const db = sbAdmin();
   try {

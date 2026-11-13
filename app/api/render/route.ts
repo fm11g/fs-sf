@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdmin } from '@/lib/auth';
+import { guard } from '@/lib/auth';
 import { dispatch } from '@/lib/github';
 import { requireApproved } from '@/lib/pipeline';
 import { sbAdmin } from '@/lib/supabase/server';
@@ -8,8 +8,8 @@ export const dynamic = 'force-dynamic';
 
 /** 음성·자막·BGM·모션그래픽 렌더를 GitHub Actions 워커에 요청 (대사·디자인 승인 필요) */
 export async function POST(req: NextRequest) {
-  const deny = await requireAdmin(req);
-  if (deny) return deny;
+  const g = await guard(req, 'step:render', 'work');
+  if (g.deny) return g.deny;
   const { contentId } = await req.json();
   try {
     await requireApproved(contentId, 'render');

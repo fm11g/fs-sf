@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdmin } from '@/lib/auth';
+import { guard } from '@/lib/auth';
 import { sbAdmin } from '@/lib/supabase/server';
 import { ensureSteps, newSlug } from '@/lib/pipeline';
 import { claimSlot } from '@/lib/editorial';
@@ -8,8 +8,8 @@ export const dynamic = 'force-dynamic';
 
 /** 새 콘텐츠 생성 { topic? } */
 export async function POST(req: NextRequest) {
-  const deny = await requireAdmin(req);
-  if (deny) return deny;
+  const g = await guard(req, 'board', 'work');
+  if (g.deny) return g.deny;
   const { topic } = await req.json().catch(() => ({}));
   const { data, error } = await sbAdmin().from('contents')
     .insert({ slug: newSlug(), topic: topic || null, status: 'working', current_step: 'research' })

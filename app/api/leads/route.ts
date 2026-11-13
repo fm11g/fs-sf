@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sbAdmin } from '@/lib/supabase/server';
 import { getSettings } from '@/lib/pipeline';
+import { guard } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,4 +39,12 @@ export async function POST(req: NextRequest) {
 }
 export function OPTIONS() {
   return new NextResponse(null, { headers: CORS });
+}
+
+/** 관리자: 신청 내역 (권한 블록: 신청 내역) */
+export async function GET(req: NextRequest) {
+  const g = await guard(req, 'leads');
+  if (g.deny) return g.deny;
+  const { data } = await sbAdmin().from('leads').select('*').order('created_at', { ascending: false }).limit(300);
+  return NextResponse.json({ leads: data || [] });
 }

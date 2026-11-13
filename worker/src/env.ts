@@ -8,6 +8,23 @@ export const env = (k: string, required = true) => {
 
 export const db = createClient(env('SUPABASE_URL'), env('SUPABASE_SERVICE_ROLE_KEY'), { auth: { persistSession: false } });
 
+/**
+ * 관리자 [연결·키]에 저장한 값 → process.env (GitHub Secrets 보다 우선).
+ * GitHub Secrets 에는 SUPABASE_URL·SUPABASE_SERVICE_ROLE_KEY 두 개만 있으면 된다.
+ */
+export async function loadSecrets() {
+  const { data, error } = await db.from('app_secrets').select('key, value');
+  if (error) { console.warn('연결·키 읽기 실패 (GitHub Secrets 만 사용):', error.message); return []; }
+  const keys: string[] = [];
+  for (const r of data || []) {
+    if (!r.value || r.key.startsWith('_') || r.key.startsWith('SUPABASE')) continue;
+    process.env[r.key] = r.value;
+    keys.push(r.key);
+  }
+  console.log(`연결·키 ${keys.length}개 적용: ${keys.join(', ')}`);
+  return keys;
+}
+
 export async function settings(): Promise<any> {
   const { data } = await db.from('settings').select('value').eq('id', 1).single();
   return data!.value;

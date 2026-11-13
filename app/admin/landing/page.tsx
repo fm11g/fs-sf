@@ -1,14 +1,13 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { sbBrowser } from '@/lib/supabase/client';
 import { api } from '@/lib/api';
 
 export default function LandingTemplates() {
   const [list, setList] = useState<any[]>([]);
   const [edit, setEdit] = useState<any>({ name: '', html: '', asset_base: '', is_active: true });
   const load = async () => {
-    const { data } = await sbBrowser().from('landing_templates').select('*').order('created_at', { ascending: false });
-    setList(data || []);
+    const d = await api('/api/landing/template').catch(() => ({ templates: [] }));
+    setList(d.templates || []);
   };
   useEffect(() => { load(); }, []);
   const loadSample = async () => setEdit({ ...edit, name: edit.name || '기본 정책자금 랜딩', html: await (await fetch('/landing-sample.html')).text() });

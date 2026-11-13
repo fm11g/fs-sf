@@ -72,6 +72,7 @@ export type Content = {
   design: Design | null;
   offer: any;
   editorial?: any;
+  reference_id?: number | null;
   copy: any;
   post: any;
   audio: any;
@@ -86,7 +87,7 @@ export type Content = {
   created_at: string;
 };
 
-export const FONT_OPTIONS = ['Black Han Sans', 'Noto Sans KR', 'Do Hyeon', 'Gothic A1'] as const;
+export { FONT_NAMES as FONT_OPTIONS } from './fonts';
 export const LAYOUTS = ['hook', 'stat', 'list', 'compare', 'quote', 'cta'] as const;
 export const MOTIONS = ['pop', 'slide', 'typewriter', 'countup', 'zoom'] as const;
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdmin } from '@/lib/auth';
+import { guard } from '@/lib/auth';
+import { can, canStep } from '@/lib/perms';
 import { applyProposal, consolidateSop, learnCounts, learningSummary, proposeSop, rejectProposal, revertProposal } from '@/lib/learn';
 import { sbAdmin } from '@/lib/supabase/server';
 import { AI_STEPS, type StepKey } from '@/lib/steps';
@@ -9,8 +10,8 @@ export const dynamic = 'force-dynamic';
 
 /** ?step= → 제안 목록 + 학습 재료 개수 / 단계 없이 → 단계별 개수 */
 export async function GET(req: NextRequest) {
-  const deny = await requireAdmin(req);
-  if (deny) return deny;
+  const g = await guard(req, 'sop');
+  if (g.deny) return g.deny;
   const step = req.nextUrl.searchParams.get('step') as StepKey | null;
   if (!step) {
     const counts = Object.fromEntries(await Promise.all(AI_STEPS.map(async (k) => [k, await learnCounts(k)])));
@@ -30,9 +31,9 @@ export async function GET(req: NextRequest) {
  * { action: 'reject', id, note? } · { action: 'revert', id }
  */
 export async function POST(req: NextRequest) {
-  const deny = await requireAdmin(req);
-  if (deny) return deny;
   const b = await req.json();
+  const g = await guard(req, b.action === 'propose' ? `step:${b.step}` : 'sop', 'work');
+  if (g.deny) return g.deny;
   try {
     if (b.action === 'propose') return NextResponse.json(await proposeSop(b.step, { force: !!b.force }));
     if (b.action === 'consolidate') return NextResponse.json(await consolidateSop(b.step, { force: !!b.force, instruction: b.instruction }));

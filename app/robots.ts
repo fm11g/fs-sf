@@ -1,6 +1,10 @@
+import { hydrateEnv, siteUrl } from '@/lib/secrets';
 import type { MetadataRoute } from 'next';
 
-export default function robots(): MetadataRoute.Robots {
-  const site = process.env.NEXT_PUBLIC_SITE_URL || '';
+export const revalidate = 3600;
+
+export default async function robots(): Promise<MetadataRoute.Robots> {
+  await hydrateEnv();
+  const site = siteUrl();
   return { rules: [{ userAgent: '*', allow: ['/policy', '/l/'], disallow: ['/admin', '/api', '/login'] }], sitemap: `${site}/sitemap.xml` };
 }

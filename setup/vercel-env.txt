@@ -1,0 +1,6 @@
+# Vercel → Settings → Environment Variables (이 3개만 넣으면 됩니다)
+# 값: Supabase → Project Settings → API (또는 Data API / API Keys)
+# AI 키·유튜브·인스타·이메일·GitHub 토큰 등 나머지는 전부 배포 후 관리자 페이지 [연결·키]에서 입력합니다.
+NEXT_PUBLIC_SUPABASE_URL=https://xxxxxxxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=anon-public-키
+SUPABASE_SERVICE_ROLE_KEY=service_role-키

@@ -5,6 +5,7 @@ import { bundle } from '@remotion/bundler';
 import { renderMedia, renderStill, selectComposition } from '@remotion/renderer';
 import { db, gateOf, getStep, log, notifySite, setStep, settings, syncCurrent, uploadPublic } from './env.js';
 import { tts } from './tts.js';
+import { buildProps, narrationOf } from '../video/props.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'out');
@@ -25,12 +26,14 @@ export async function render(contentId: string) {
   await log(contentId, 'voice', 'running');
   const audio: any[] = [];
   for (const sc of c.script.scenes) {
-    const { buf, duration } = await tts(sc.narration, s);
+    // 영상 편집기에서 바꾼 내레이션이 있으면 그 문장으로 읽음
+    const g = (c.design?.scenes || []).find((x: any) => x.id === sc.id);
+    const text = narrationOf(sc, g);
+    const { buf, duration } = await tts(text, s);
     const url = await uploadPublic(`contents/${c.slug}/voice-${sc.id}.mp3`, buf, 'audio/mpeg');
-    audio.push({ id: sc.id, url, duration: Number((duration + PAD).toFixed(2)) });
+    audio.push({ id: sc.id, url, duration: Number((duration + PAD).toFixed(2)), text }); // text: 편집기에서 대사가 바뀌었는지 판단용
   }
-  const totalSec = audio.reduce((n, a) => n + a.duration, 0);
-  await log(contentId, 'voice', 'done', `총 ${totalSec.toFixed(1)}초`);
+  await log(contentId, 'voice', 'done', `총 ${audio.reduce((n, a) => n + a.duration, 0).toFixed(1)}초`);
 
   // 2) BGM 선택
   let bgmUrl: string | null = null;
@@ -44,16 +47,12 @@ export async function render(contentId: string) {
   }
 
   // 3) 모션그래픽 + 자막 + 음성 + BGM 합성
-  const d = c.design;
-  const scenes = c.script.scenes.map((sc: any) => {
-    const g = d.scenes.find((x: any) => x.id === sc.id) || { layout: 'quote', headline: sc.captions?.[0] || '' };
-    const a = audio.find((x) => x.id === sc.id)!;
-    return { ...g, id: sc.id, narration: sc.narration, captions: sc.captions, audioUrl: a.url, durationSec: a.duration };
-  });
   const dateLabel = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', month: 'long', day: 'numeric' }).format(new Date());
-  const inputProps = { brand: s.brand, dateLabel, theme: d.theme, fonts: d.fonts, scale: d.scale, scenes, bgmUrl };
+  const inputProps = buildProps(c, { brand: c.design?.brand_text || s.brand, dateLabel, audio, bgmUrl });
+  const scenes = inputProps.scenes;
+  const totalSec = scenes.reduce((n, x) => n + x.durationSec, 0); // 편집기의 장면 여백(hold) 포함
 
-  await log(contentId, 'render', 'running', `${scenes.length}개 장면`);
+  await log(contentId, 'render', 'running', `${scenes.length}개 장면 · ${inputProps.size?.w}x${inputProps.size?.h}`);
   const serveUrl = await bundle({ entryPoint: path.join(ROOT, 'video/index.ts') });
   const composition = await selectComposition({ serveUrl, id: 'Short', inputProps });
   const mp4 = path.join(OUT, `${c.slug}.mp4`);

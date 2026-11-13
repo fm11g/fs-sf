@@ -1,3 +1,4 @@
+import { FONT_NAMES } from './fonts';
 import type { Settings } from './types';
 import type { Sop } from './sop';
 import { stepDef, type StepKey } from './steps';
@@ -15,7 +16,7 @@ const ROLE: Record<string, string> = {
   design: `모션그래픽 디자이너. 1080x1920 세로 화면의 장면별 그래픽을 설계합니다.
 layout: hook(큰 질문/충격 문구), stat(큰 숫자+단위), list(항목 2~4개 순차 등장), compare(2항목 비교), quote(핵심 한 문장), cta(행동 유도).
 motion: pop, slide, typewriter, countup(stat 전용), zoom.
-폰트: Black Han Sans, Noto Sans KR, Do Hyeon, Gothic A1.`,
+폰트(이 중에서만): ${FONT_NAMES.join(', ')}.`,
   copy: '채널 카피라이터. 링크 자리는 반드시 {LINK} 토큰으로 둡니다.',
   post: 'SEO 에디터. 네이버·구글 검색 상위 노출을 노리는 정보성 글을 씁니다.',
 };

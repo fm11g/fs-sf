@@ -383,3 +383,37 @@ export async function learnSweep() {
 }
 
 export { tierOf, tagStats };
+
+// ── 참고 영상 → SOP 보완 제안 (기존 SOP 유지, 줄 단위, 사람이 반영) ──────
+export async function proposeFromReferences(step: StepKey, refIds: number[]) {
+  if (!AI_STEPS.includes(step)) throw new Error('AI 단계만 가능합니다');
+  const db = sbAdmin();
+  const s = await getSettings();
+  const { data: refs } = await db.from('ref_videos').select('id, title, note, weight, analysis').in('id', refIds).eq('status', 'ready');
+  const list = (refs || []).filter((r: any) => r.analysis);
+  if (!list.length) throw new Error('분석이 끝난 참고 영상이 없습니다');
+  const sop = await getSop(step);
+  const show = (r: any) => {
+    const a = r.analysis;
+    const rules = (a.replicate_rules || []).filter((x: any) => x.step === step);
+    return `### 참고 영상 #${r.id} 「${r.title || ''}」 반영 강도 ${r.weight}/5${r.note ? `\n운영자 메모: ${r.note}` : ''}\n요약: ${a.summary || ''}\n잘 되는 이유: ${(a.why_it_works || []).join(' / ')}\n이 단계 재현 규칙:\n${rules.map((x: any) => `- ${x.rule} (근거: ${x.evidence || '-'})`).join('\n') || '- (없음)'}\n피할 것: ${(a.avoid || []).join(' / ')}`;
+  };
+  const res = await ask<any>({
+    system: `당신은 '오늘의 정책자금' 숏폼 공장의 SOP 편집자입니다. 운영자가 고른 참고 영상 분석으로 '${stepDef(step).label}' 단계 SOP 를 보완합니다.
+- 기존 SOP 를 유지하고 필요한 줄만 add/modify/remove (최대 6개). 이미 있는 내용은 되풀이하지 않습니다.
+- 여러 영상에 공통이거나 반영 강도가 높은 영상의 규칙을 우선합니다. evidence 에는 참고 영상 번호.
+- 형식·구조·리듬·디자인만. 특정 영상의 문장·고유 정보를 그대로 쓰게 하는 규칙 금지. 사실·출처·금지 표현 규칙은 느슨하게 하지 않습니다.`,
+    prompt: `## 현재 SOP\n${sop.content}\n\n## 참고 영상 분석\n${list.map(show).join('\n\n')}\n\n금지 표현: ${(s.banned_phrases || []).join(', ')}\n\nJSON: { "summary": "", "patterns": [{ "pattern": "", "evidence": [번호], "in_sop": "already | missing | different" }], "changes": [{ "op": "add | modify | remove", "section": "목적 | 집중 포인트 | 체크리스트 | 금지 | 사람이 결정할 것", "target": "", "text": "", "reason": "", "evidence": [번호] }] }`,
+    maxTokens: 4000, chain: s.llm_chain,
+  });
+  const changes = sanitizeChanges(res.data.changes, s.banned_phrases || []);
+  await db.from('sop_proposals').update({ status: 'superseded', decided_at: new Date().toISOString() }).eq('step', step).eq('status', 'pending');
+  const { data: row, error } = await db.from('sop_proposals').insert({
+    step, kind: 'patch', base_content: sop.content, changes, patterns: res.data.patterns || [],
+    summary: `[참고 영상 ${list.map((r: any) => '#' + r.id).join(' ')}] ${res.data.summary || ''}`,
+    exemplar_ids: [], provider: `${res.provider}/${res.model}`, stats: { source: 'reference', refs: list.map((r: any) => r.id) },
+  }).select().single();
+  if (error) throw new Error(error.message);
+  await notify('sop_proposal', { step, extra: { proposal: row } });
+  return { proposal: row };
+}

@@ -1,37 +1,29 @@
 # 설치
 
+> 빠른 길: `setup/README.md` (SQL 한 번 · Vercel 3개 · GitHub 2개 · 첫 가입)
+
 ## 1. Supabase
-1. 새 프로젝트 → SQL Editor에서 `supabase/migrations/001_init.sql`, `002_workflow.sql`, `003_providers.sql`, `004_learning_notify.sql`, `005_scores_export.sql`, `006_channels_editorial.sql` 순서로 실행
-2. Authentication → Users → 관리자 계정 생성(이메일·비밀번호)
-3. SQL: `insert into admins (email) values ('관리자 이메일');`
-4. Settings → API에서 `URL`, `anon key`, `service_role key` 복사
+1. 새 프로젝트 → SQL Editor에서 `setup/supabase-all-in-one.sql` 한 번 실행 (= migrations 001~007)
+2. Settings → API에서 `URL`, `anon key`, `service_role key` 복사
+3. 관리자 계정은 SQL 로 넣지 않습니다 — 배포 후 첫 접속 때 **대표 계정 만들기** 화면에서 생성
 
 ## 2. GitHub
 1. 이 폴더 전체를 새 저장소(비공개 권장)에 push
-2. Settings → Secrets and variables → Actions → Secrets
-
-| Secret | 값 |
-|---|---|
-| `SUPABASE_URL` `SUPABASE_SERVICE_ROLE_KEY` | 1-4에서 복사 |
-| `SITE_URL` | Vercel 배포 주소 (예: https://today-policy-fund.vercel.app) |
-| `WORKER_SECRET` | 임의의 긴 문자열 (Vercel에도 같은 값) |
-| `FISH_AUDIO_API_KEY` | Fish Audio API 키 |
-| `YT_CLIENT_ID` `YT_CLIENT_SECRET` `YT_REFRESH_TOKEN` | 4번에서 발급 |
-| `IG_USER_ID` `IG_ACCESS_TOKEN` | 4번에서 발급 |
-| `YT_API_KEY` (선택) | YouTube Data API 키 — OAuth 없이 채널 공개 지표 수집 |
-
-3. Fine-grained PAT 발급(이 저장소, Contents: Read and write) → Vercel의 `GITHUB_TOKEN`
+2. Settings → Secrets and variables → Actions → `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` 두 개만 등록
+   (워커는 나머지 키를 Supabase `app_secrets` 에서 읽음 · 관리자 [연결·키] → [워커에 적용]으로 자동 등록도 가능)
 
 ## 3. Vercel
 1. 저장소 Import (Framework: Next.js, Root: 저장소 루트)
-2. Environment Variables — `.env.example` 상단 블록. AI 제공자는 **하나 이상**만 있으면 됩니다(Claude / OpenAI / 오픈소스). 여러 개 넣으면 실패 시 자동 전환 → [AGENTS-SKILLS.md](AGENTS-SKILLS.md)
-3. 배포 후 `/login` 접속 확인. 플랜은 Pro 권장(함수 300초)
+2. Environment Variables: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` 세 개만
+3. 배포 → 사이트 접속 → 대표 계정 만들기 → **연결·키** 메뉴에서 AI 키(하나 이상)·GitHub 저장소/토큰(Contents·Secrets 읽기/쓰기)·Fish Audio·유튜브·인스타·이메일 입력
+   (`.env.example` 은 로컬 개발용. 환경변수와 관리자 입력값이 둘 다 있으면 관리자 입력값 우선)
+4. **직원 계정** 메뉴에서 직원 추가·권한 블록 지정. 플랜은 Pro 권장(함수 300초)
 
 ## 4. 채널 연결
 **유튜브**
 1. Google Cloud → YouTube Data API v3 사용 설정 → OAuth 클라이언트(웹 애플리케이션)
 2. 승인된 리디렉션 URI: `https://사이트/api/oauth/youtube/callback`
-3. 관리자 → 설정 → "유튜브 채널 연결" → 표시된 값을 GitHub Secret `YT_REFRESH_TOKEN`에 저장
+3. 관리자 → 연결·키 → "유튜브 계정 연결" → 리프레시 토큰이 자동 저장됨 (워커도 그대로 사용)
 4. 공개 업로드를 위해 YouTube API 서비스 감사 신청 (통과 전에는 비공개로 잠김)
 
 **인스타그램**

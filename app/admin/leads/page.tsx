@@ -1,11 +1,11 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { sbBrowser } from '@/lib/supabase/client';
+import { api } from '@/lib/api';
 
 export default function Leads() {
   const [rows, setRows] = useState<any[]>([]);
   useEffect(() => {
-    sbBrowser().from('leads').select('*').order('created_at', { ascending: false }).limit(200).then(({ data }) => setRows(data || []));
+    api('/api/leads').then((d) => setRows(d.leads || [])).catch((e) => alert(e.message));
   }, []);
   const csv = () => {
     const head = ['일시', '이름', '연락처', '업체', '콘텐츠', 'utm_source'];

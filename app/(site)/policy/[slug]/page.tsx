@@ -2,10 +2,10 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { marked } from 'marked';
 import { getPost } from '@/lib/posts';
+import { hydrateEnv, siteUrl } from '@/lib/secrets';
 
 export const revalidate = 600;
 
-const SITE = process.env.NEXT_PUBLIC_SITE_URL || '';
 
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
   const p = await getPost(params.slug);
@@ -20,6 +20,8 @@ export async function generateMetadata({ params }: { params: { slug: string } })
 }
 
 export default async function PostPage({ params }: { params: { slug: string } }) {
+  await hydrateEnv();
+  const SITE = siteUrl();
   const p = await getPost(params.slug);
   if (!p?.post) notFound();
   const images: { url: string; alt?: string }[] = p.images || [];

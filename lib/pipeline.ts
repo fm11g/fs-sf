@@ -1,3 +1,5 @@
+import { siteUrl } from './secrets';
+import { markUsed, referenceBlock } from './references';
 import { ask, type Usage } from './llm';
 import { USER, buildSystem, reviewPrompt } from './prompts';
 import { sbAdmin } from './supabase/server';
@@ -17,7 +19,7 @@ type Check = { level: 'error' | 'warn' | 'ok'; msg: string };
 
 export function landingLink(s: Settings, slug: string, source: 'youtube' | 'instagram' | 'blog') {
   const medium = source === 'youtube' ? 'shorts' : source === 'instagram' ? 'reels' : 'post';
-  return `${s.site_url.replace(/\/$/, '')}/l/${slug}?utm_source=${source}&utm_medium=${medium}&utm_campaign=${slug}`;
+  return `${siteUrl(s)}/l/${slug}?utm_source=${source}&utm_medium=${medium}&utm_campaign=${slug}`;
 }
 
 /** 오늘 날짜 기반 slug: 2026-11-12-a1b2 */
@@ -142,7 +144,7 @@ export function lint(step: StepKey, out: any, c: any, s: Settings, extra: { slot
 const hasError = (c: Check[]) => c.some((x) => x.level === 'error');
 
 // ── 생성: 준비(prepare) → LLM 또는 에이전트 → 마무리(finalize) ─────────
-type Prep = { system: string; prompt: string; webSearch: boolean; maxTokens: number; slots?: any[]; tpl?: any; refs?: number[] };
+type Prep = { system: string; prompt: string; webSearch: boolean; maxTokens: number; slots?: any[]; tpl?: any; refs?: number[]; refVideos?: number[] };
 type Gen = { output: any; notes: any; usage: Usage; slots?: any[]; provider?: string; model?: string; tried?: any[]; input?: { system: string; prompt: string }; candidates?: number; pred_score?: number | null; judge?: any; refs?: number[] };
 
 /** 이 단계에서 모델(또는 에이전트)이 받을 지시문 전체 */
@@ -172,6 +174,11 @@ async function prepare(step: StepKey, c: any, s: Settings, sop: Sop, feedback?: 
     prep.prompt += fs.text;
     prep.refs = fs.ids;
   } catch { /* 예시 없음 */ }
+  // 참고 영상 학습: "이 영상처럼 만들기" 콘텐츠면 그 영상, 아니면 학습에 켠 참고 영상들의 재현 규칙
+  try {
+    const rb = await referenceBlock(step, c);
+    if (rb.text) { prep.prompt += rb.text; prep.refVideos = rb.ids; }
+  } catch { /* 참고 영상 없음 */ }
   return prep;
 }
 
@@ -256,6 +263,7 @@ async function generate(step: StepKey, c: any, s: Settings, sop: Sop, feedback?:
   }
   const res = ok[pick];
   const gen = await finalize(step, c, s, res.data, prep);
+  if (prep.refVideos?.length) markUsed(prep.refVideos).catch(() => {});
   const pred = judge?.scores?.find((x: any) => x.i === pick)?.score ?? null;
   return {
     ...gen, usage: add(gen.usage, usage), provider: res.provider, model: res.model, tried: res.tried,

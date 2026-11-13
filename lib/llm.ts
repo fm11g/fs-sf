@@ -15,6 +15,7 @@ export type AskOpts = {
   system: string; prompt: string; webSearch?: boolean; mcp?: McpServer[]; maxTokens?: number;
   chain?: string[];           // 설정의 llm_chain
   prefer?: string | null;     // 단계별 지정 제공자 (auto/빈값이면 chain 순서)
+  images?: string[];          // 이미지 URL (참고 영상 프레임 분석 등 — 비전 지원 모델)
 };
 export type AskResult<T> = { data: T; usage: Usage; provider: ProviderId; model: string; tried: { provider: string; error: string }[] };
 
@@ -89,7 +90,7 @@ async function callClaude(o: AskOpts): Promise<Raw> {
   for (const m of servers) tools.push({ type: 'mcp_toolset', mcp_server_name: m.name });
   const body: any = {
     model: MODELS.claude(), max_tokens: o.maxTokens || 8000, system: o.system + JSON_RULE,
-    messages: [{ role: 'user', content: o.prompt }],
+    messages: [{ role: 'user', content: o.images?.length ? [...o.images.map((url) => ({ type: 'image', source: { type: 'url', url } })), { type: 'text', text: o.prompt }] : o.prompt }],
     ...(tools.length ? { tools } : {}),
     ...(servers.length ? { mcp_servers: servers.map((m) => ({ type: 'url', name: m.name, url: m.url, ...(m.token ? { authorization_token: m.token } : {}) })) } : {}),
   };
@@ -106,7 +107,8 @@ async function callOpenAI(o: AskOpts): Promise<Raw> {
     method: 'POST', signal: AbortSignal.timeout(native ? TIMEOUT * 2 : TIMEOUT),
     headers: { 'content-type': 'application/json', Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
     body: JSON.stringify({
-      model: MODELS.openai(), instructions: o.system + JSON_RULE, input: o.prompt,
+      model: MODELS.openai(), instructions: o.system + JSON_RULE,
+      input: o.images?.length ? [{ role: 'user', content: [{ type: 'input_text', text: o.prompt }, ...o.images.map((u) => ({ type: 'input_image', image_url: u }))] }] : o.prompt,
       max_output_tokens: (o.maxTokens || 8000) + 4000, // 추론 토큰 여유
       ...(native ? { tools: [{ type: 'web_search' }] } : {}),
     }),
@@ -118,13 +120,13 @@ async function callOpenAI(o: AskOpts): Promise<Raw> {
   return { text, usage: { input: j.usage?.input_tokens ?? 0, output: j.usage?.output_tokens ?? 0 } };
 }
 
-async function chat(system: string, prompt: string, maxTokens: number): Promise<Raw> {
+async function chat(system: string, prompt: string, maxTokens: number, images?: string[]): Promise<Raw> {
   const r = await fetch(`${process.env.OSS_BASE_URL!.replace(/\/$/, '')}/chat/completions`, {
     method: 'POST', signal: AbortSignal.timeout(TIMEOUT),
     headers: { 'content-type': 'application/json', ...(process.env.OSS_API_KEY ? { Authorization: `Bearer ${process.env.OSS_API_KEY}` } : {}) },
     body: JSON.stringify({
       model: MODELS.oss(), max_tokens: maxTokens, temperature: 0.4,
-      messages: [{ role: 'system', content: system }, { role: 'user', content: prompt }],
+      messages: [{ role: 'system', content: system }, { role: 'user', content: images?.length ? [{ type: 'text', text: prompt }, ...images.map((url) => ({ type: 'image_url', image_url: { url } }))] : prompt }],
       ...(process.env.OSS_JSON_MODE === '1' ? { response_format: { type: 'json_object' } } : {}),
     }),
   });
@@ -151,7 +153,7 @@ async function callOss(o: AskOpts): Promise<Raw> {
     prompt += `\n\n## 검색 결과 (아래 URL만 출처로 사용. 여기에 없는 숫자·사실은 쓰지 말고 "공고 확인 필요"로 둡니다)\n` +
       uniq.map((h, i) => `[${i + 1}] ${h.title}\n${h.url}\n${h.content}`).join('\n\n');
   }
-  const res = await chat(o.system + JSON_RULE, prompt, o.maxTokens || 8000);
+  const res = await chat(o.system + JSON_RULE, prompt, o.maxTokens || 8000, o.images);
   return { text: res.text, usage: { input: usage.input + res.usage.input, output: usage.output + res.usage.output } };
 }
 

@@ -12,15 +12,19 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.60.0",
+    "@remotion/player": "4.0.543",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.45.4",
+    "blakejs": "^1.2.1",
     "cheerio": "^1.0.0",
     "googleapis": "^144.0.0",
     "marked": "^14.1.2",
     "next": "14.2.35",
     "nodemailer": "^6.10.1",
     "react": "18.3.1",
-    "react-dom": "18.3.1"
+    "react-dom": "18.3.1",
+    "remotion": "4.0.543",
+    "tweetnacl": "^1.0.3"
   },
   "devDependencies": {
     "@types/node": "^20.16.10",

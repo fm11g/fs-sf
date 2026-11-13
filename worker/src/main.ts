@@ -1,4 +1,5 @@
-import { db, env, log, notifySite, setStep, settings } from './env.js';
+import { db, env, loadSecrets, log, notifySite, setStep, settings } from './env.js';
+import { analyzeReference } from './reference.js';
 import { render } from './render.js';
 import { publish } from './publish.js';
 import { collectChannels } from './channels.js';
@@ -52,6 +53,7 @@ async function channels() {
 }
 
 async function main() {
+  await loadSecrets(); // 관리자 [연결·키] 값 적용
   const mode = process.env.MODE || 'factory';
   const contentId = process.env.CONTENT_ID || undefined;
   const topic = process.env.TOPIC || '';
@@ -73,6 +75,8 @@ async function main() {
       await render(contentId!);
     } else if (mode === 'publish') {
       await publish(contentId!, targets);
+    } else if (mode === 'reference') {
+      await analyzeReference(Number(process.env.REF_ID));
     } else {
       throw new Error(`알 수 없는 MODE: ${mode}`);
     }

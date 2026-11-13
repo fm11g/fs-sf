@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdmin } from '@/lib/auth';
+import { guard } from '@/lib/auth';
 import { dispatch } from '@/lib/github';
 import { requireApproved } from '@/lib/pipeline';
 import { sbAdmin } from '@/lib/supabase/server';
@@ -8,8 +8,8 @@ export const dynamic = 'force-dynamic';
 
 /** 게시: 렌더·카피·랜딩·정보글이 모두 승인된 경우에만 워커에 요청 */
 export async function POST(req: NextRequest) {
-  const deny = await requireAdmin(req);
-  if (deny) return deny;
+  const g = await guard(req, 'step:publish', 'work');
+  if (g.deny) return g.deny;
   const { contentId, targets = ['youtube', 'instagram'] } = await req.json();
   try {
     await requireApproved(contentId, 'publish');

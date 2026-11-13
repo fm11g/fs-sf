@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdmin } from '@/lib/auth';
+import { guard } from '@/lib/auth';
 import { activePlan, buildPlan, claimSlot, moveSlot, updateSlot } from '@/lib/editorial';
 import { channelInsights } from '@/lib/channels';
 import { candidateTable } from '@/lib/editorial-core';
@@ -10,8 +10,8 @@ export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
-  const deny = await requireAdmin(req);
-  if (deny) return deny;
+  const g = await guard(req, 'editorial');
+  if (g.deny) return g.deny;
   const [plan, ins, s] = await Promise.all([activePlan(), channelInsights(), getSettings()]);
   const table = candidateTable(ins.dims as any, ins.overall, s);
   const ids = (plan?.slots || []).map((x: any) => x.content_id).filter(Boolean);
@@ -24,8 +24,8 @@ export async function GET(req: NextRequest) {
 
 /** { action: 'build' | 'update_slot' | 'move' | 'claim' | 'knobs', … } */
 export async function POST(req: NextRequest) {
-  const deny = await requireAdmin(req);
-  if (deny) return deny;
+  const g = await guard(req, 'editorial', 'work');
+  if (g.deny) return g.deny;
   const b = await req.json();
   try {
     if (b.action === 'build') return NextResponse.json(await buildPlan({ force: b.force !== false }));
