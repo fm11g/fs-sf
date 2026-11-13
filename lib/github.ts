@@ -1,5 +1,5 @@
 /** GitHub Actions 워커 호출 (repository_dispatch) */
-export async function dispatch(event: 'render' | 'publish' | 'factory', payload: Record<string, any>) {
+export async function dispatch(event: 'render' | 'publish' | 'factory' | 'channels', payload: Record<string, any>) {
   const repo = process.env.GITHUB_REPO;
   const token = process.env.GITHUB_TOKEN;
   if (!repo || !token) throw new Error('GITHUB_REPO / GITHUB_TOKEN 환경변수가 없습니다');

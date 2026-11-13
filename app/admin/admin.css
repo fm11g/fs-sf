@@ -120,3 +120,13 @@
 #tpf-admin .up{color:var(--ok);font-weight:700}
 #tpf-admin .down{color:var(--bad);font-weight:700}
 #tpf-admin .scorebar{display:inline-block;height:8px;background:#f0b400;border-radius:4px;vertical-align:middle}
+
+/* ── v6: 채널 성과 · 편성표 ── */
+#tpf-admin .lineup{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;margin-bottom:16px}
+#tpf-admin .slotcard{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px}
+#tpf-admin .slotcard.today{border:2px solid var(--pri);box-shadow:0 0 0 3px #1739a61a}
+#tpf-admin .slotcard.past{opacity:.6}
+#tpf-admin .dims{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
+#tpf-admin .dims label{display:grid;gap:2px;font-size:12px}
+#tpf-admin .dims select{font-size:13px;padding:5px 6px}
+#tpf-admin .slotbanner{background:#eef2ff;border:1px solid #c7d2fe;border-radius:10px;padding:8px 12px;margin:0 0 12px;font-size:13px}

@@ -96,6 +96,14 @@ export async function digestEmail(s: any) {
     }).join('') : '',
     active.length ? h2('진행 현황') + active.slice(0, 8).map((c: any) => p(`<a href="${esc(base)}/admin/contents/${c.id}">${esc(c.topic || c.slug)}</a>`) + progress(stOf(c.id), c.current_step)).join('') : '',
     publishedToday.length ? h2('오늘 게시') + publishedToday.map((c: any) => p(`• ${esc(c.topic || c.slug)} ${c.youtube_id ? `— <a href="https://youtube.com/shorts/${esc(c.youtube_id)}">유튜브</a>` : ''} · <a href="${esc(base)}/l/${esc(c.slug)}">랜딩</a> · <a href="${esc(base)}/policy/${esc(c.slug)}">정보글</a>`)).join('') : '',
+    await (async () => {
+      const { data: plan } = await db.from('editorial_plans').select('slots, series_note').eq('status', 'active').order('id', { ascending: false }).limit(1).maybeSingle();
+      const { data: cp } = await db.from('channel_posts').select('title, url, perf_score, metrics, platform').not('perf_score', 'is', null).gte('published_at', new Date(Date.now() - 14 * 864e5).toISOString()).order('perf_score', { ascending: false }).limit(3);
+      const tomorrow = new Date(Date.now() + 33 * 3600e3).toISOString().slice(0, 10);
+      const next = (plan?.slots || []).find((x: any) => x.date === tomorrow);
+      return (next ? h2('내일 편성') + p(`<b>${esc([next.topic_category, next.angle, next.hook_type, next.format].join(' · '))}</b>${next.experiment ? ' [실험]' : ''}<br>${esc(next.title_idea || '')}<br><span style="color:#6b7594">${esc(next.reason || '')}</span>`) : '')
+        + ((cp || []).length ? h2('최근 2주 성과 상위 영상') + (cp || []).map((x: any) => p(`★${x.perf_score} <a href="${esc(x.url)}">${esc(x.title)}</a> — 조회 ${x.metrics?.views ?? '-'} · 공유 ${x.metrics?.shares ?? '-'} · 댓글 ${x.metrics?.comments ?? '-'}`)).join('') : '');
+    })(),
     h2('SOP 학습') + p(`아직 반영하지 않은 학습 재료(좋은 예·수정 예·아쉬운 예): <b>${exUnused || 0}개</b>`) +
       (props || []).map((x: any) => p(`• ${stepDef(x.step).no} ${stepDef(x.step).label} — ${x.status === 'pending' ? '<b>검토 대기</b>' : x.status === 'applied' ? '반영됨' : '거절'}: ${esc(String(x.summary || '').slice(0, 120))}`)).join(''),
   ].join('');

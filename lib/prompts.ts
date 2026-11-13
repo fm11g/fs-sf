@@ -1,6 +1,7 @@
 import type { Settings } from './types';
 import type { Sop } from './sop';
 import { stepDef, type StepKey } from './steps';
+import { DIMENSIONS } from './editorial-taxonomy';
 
 export const todayKST = () =>
   new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' }).format(new Date());
@@ -53,10 +54,10 @@ const revise = (prev: any, feedback?: string | null) =>
     ? `\n\n## 재작업 지시 (최우선 반영)\n${feedback}\n\n## 이전 산출물 (지시와 무관한 부분은 유지)\n${J(prev)}`
     : '';
 
-type Ctx = { s: Settings; c: any; prev?: any; feedback?: string | null; recentTopics?: string[]; slots?: any[] };
+type Ctx = { s: Settings; c: any; prev?: any; feedback?: string | null; recentTopics?: string[]; slots?: any[]; brief?: string };
 
 export const USER: Record<string, (x: Ctx) => string> = {
-  research: ({ s, c, prev, feedback, recentTopics }) => `오늘 숏폼으로 다룰 정책자금 주제를 조사하세요.
+  research: (ctx) => { const { c, prev, feedback, recentTopics } = ctx; return  `오늘 숏폼으로 다룰 정책자금 주제를 조사하세요.
 ${c.topic ? `지정 주제/힌트: "${c.topic}" — 이 주제로 조사합니다.` : '지정 주제 없음 — 시의성과 타깃 적합성이 가장 높은 것을 고릅니다.'}
 최근 14일 내 다룬 주제(중복 회피): ${recentTopics?.length ? recentTopics.join(' / ') : '없음'}
 우선 출처: 중소벤처기업진흥공단, 소상공인시장진흥공단, 신용보증기금, 기술보증기금, 지역신용보증재단, 중소벤처기업부, 기업마당(bizinfo.go.kr), 지자체 공고.
@@ -65,6 +66,7 @@ JSON 스키마:
 {
   "candidates": [{ "topic": "", "why": "", "score": 0 }],
   "topic": "선택한 주제 한 줄",
+  "topic_category": "${DIMENSIONS.topic_category.values.join(' | ')} 중 하나",
   "angle": "왜 지금 이 사장님들이 봐야 하는지",
   "program": { "name": "", "agency": "", "amount": "", "rate": "", "period": "", "eligibility": [""], "how_to_apply": "", "deadline": "" },
   "facts": [{ "claim": "", "source_title": "", "source_url": "", "date": "" }],
@@ -72,22 +74,26 @@ JSON 스키마:
   "risk_notes": ["확인 안 된 사항·주의점"],
   ${AI_NOTES}
 }
-candidates 는 3개.${revise(prev, feedback)}`,
+candidates 는 3개.${ctx.brief || ''}${revise(prev, feedback)}`; },
 
-  plan: ({ s, c, prev, feedback }) => `조사: ${J(c.research)}
+  plan: (ctx) => { const { s, c, prev, feedback } = ctx; return `조사: ${J(c.research)}
 
 40초 숏폼 기획안을 만드세요.
 JSON 스키마:
 {
   "working_title": "",
-  "hook_options": [{ "type": "숫자형|질문형|손실형", "text": "" }],
+  "topic_category": "조사의 topic_category 그대로",
+  "angle": "${DIMENSIONS.angle.values.join(' | ')} 중 하나",
+  "format": "${DIMENSIONS.format.values.join(' | ')} 중 하나",
+  "target": "${DIMENSIONS.target.values.join(' | ')} 중 하나",
+  "hook_options": [{ "type": "${DIMENSIONS.hook_type.values.join('|')}", "text": "" }],
   "chosen_hook": "",
   "mood": "urgent | calm | hopeful | serious",
   "structure": [{ "id": "s1", "role": "hook|problem|info|detail|cta", "point": "이 장면에서 전달할 한 가지", "seconds": 4 }],
   "cta": "${s.cta_text} 를 자연스럽게 변형",
   ${AI_NOTES}
 }
-장면 6~8개, seconds 합계 38~42, 마지막 장면 role 은 cta.${revise(prev, feedback)}`,
+장면 6~8개, seconds 합계 38~42, 마지막 장면 role 은 cta. hook_options 3개는 서로 다른 type.${ctx.brief || ''}${revise(prev, feedback)}`; },
 
   script: ({ c, prev, feedback }) => `조사: ${J(c.research)}
 기획: ${J(c.plan)}

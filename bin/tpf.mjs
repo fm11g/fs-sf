@@ -57,6 +57,12 @@ const HELP = `tpf <명령> [인자] [--옵션]
   proposal reject <pid> [--note …] | proposal revert <pid>
   proposal apply <pid> [--file 다듬은.md] [--force]   (재정리안)
 
+채널 성과 · 편성
+  channels [sync|analyze]               채널 수집 요청 / 분석·점수 다시 계산 (없으면 요약)
+  insights                              형태별 성과·상위/하위 영상·시청자 요청·최근 흐름
+  lineup [--rebuild]                    7일 편성표 (다시 편성)
+  slot <번호0~> [--angle 사례] [--format Q&A형] [--hook_type 질문형] [--topic_category 수출] [--target 소상공인] [--title "…"] [--lock|--unlock] [--move -1|1]
+
 데이터 내보내기 (GitHub data 브랜치 · 구글 시트)
   export status | export flush | export rebuild
 
@@ -147,6 +153,29 @@ async function main() {
     case 'notes': return out(await call('learning_notes', { step: need(a1, 'step') }));
     case 'consolidate': return out(await call('sop_consolidate', { step: need(a1, 'step'), ...(flags.instruction ? { instruction: flags.instruction } : {}), force: !!flags.force }));
     case 'export': return out(await call('data_export', { action: a1 || 'status' }));
+    case 'channels':
+      if (a1 === 'sync') return out(await call('channels_sync'));
+      if (a1 === 'analyze') return out(await call('channels_analyze', { reanalyze: !!flags.reanalyze }));
+      { const i = await call('channel_insights'); return out({ overall: i.overall, scored: i.scored, top: i.top, bottom: i.bottom, requests: i.requests.slice(0, 6), last_collected: i.last_collected }); }
+    case 'insights': return out(await call('channel_insights'));
+    case 'lineup': {
+      const p = await call('editorial_plan', { build: !!flags.rebuild });
+      if (!p) return console.log('편성표 없음 — tpf lineup --rebuild');
+      console.log(p.series_note ? `흐름: ${p.series_note}\n` : '');
+      for (const [i, x] of (p.slots || []).entries()) console.log(`${i}. ${x.date} ${x.topic_category} / ${x.angle} / ${x.hook_type} / ${x.format} / ${x.target}${x.experiment ? ' [실험]' : ''}${x.locked ? ' [고정]' : ''}${x.content_id ? ' [배정]' : ''}\n   ${x.title_idea || ''}  — ${x.reason || ''}`);
+      if (p.warnings?.length) console.log('\n⚠ ' + p.warnings.join('\n⚠ '));
+      return;
+    }
+    case 'slot': {
+      const index = Number(need(a1, '슬롯 번호'));
+      if (flags.move) return out(await call('editorial_update_slot', { index, move: Number(flags.move) }));
+      const patch = {};
+      for (const k of ['topic_category', 'angle', 'hook_type', 'format', 'target']) if (flags[k]) patch[k] = flags[k];
+      if (flags.title) patch.title_idea = flags.title;
+      if (flags.lock) patch.locked = true;
+      if (flags.unlock) patch.locked = false;
+      return out(await call('editorial_update_slot', { index, patch }));
+    }
     case 'learn':
       if (a1 && flags.propose) return out(await call('sop_learn_propose', { step: a1, force: !!flags.force }));
       return out(await call('sop_learn_status', a1 ? { step: a1 } : {}));

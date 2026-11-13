@@ -13,8 +13,9 @@ description: 오늘의 정책자금 숏폼 공장의 현황을 확인한다. "�
    - 나머지는 개수만
 3. 운영자가 특정 콘텐츠를 물으면 `tpf get <id>` 로 단계별 상태·규칙 검사·AI 의견 요약을, `tpf get <id> <step>` 으로 산출물 전문을 본다.
 4. 효율을 물으면 `tpf metrics --days 30`: 가장 오래 걸리는 단계, 재작업이 많은 단계, AI 결정 비율, 조회→신청 전환을 먼저 말한다.
-5. 점수를 물으면 `tpf learn` (단계별 평가 수·평균), 데이터 저장 상태는 `tpf export status` (GitHub·시트 대기·실패).
-6. 서버 AI가 안 돌면 `tpf providers` 로 어떤 제공자가 준비됐는지 확인한다.
+5. 채널 반응을 물으면 `tpf channels`, 편성은 `tpf lineup` (`tpf-editorial`).
+6. 점수를 물으면 `tpf learn` (단계별 평가 수·평균), 데이터 저장 상태는 `tpf export status` (GitHub·시트 대기·실패).
+7. 서버 AI가 안 돌면 `tpf providers` 로 어떤 제공자가 준비됐는지 확인한다.
 
 표로 길게 나열하지 말고, 운영자가 지금 해야 할 일 위주로 말한다.
 

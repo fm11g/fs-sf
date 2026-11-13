@@ -1,6 +1,7 @@
 import { db, env, log, notifySite, setStep, settings } from './env.js';
 import { render } from './render.js';
 import { publish } from './publish.js';
+import { collectChannels } from './channels.js';
 
 const SITE = () => env('SITE_URL').replace(/\/$/, '');
 
@@ -40,6 +41,16 @@ async function factory(contentId: string | undefined, topic: string) {
   }
 }
 
+/** 채널 수집 → 사이트에서 댓글 분석·최종 점수·성과 학습 → 편성표 갱신 */
+async function channels() {
+  const r = await collectChannels();
+  try { console.log('분석·점수:', JSON.stringify(await call('/api/channels/analyze', { warnings: r.warnings })).slice(0, 300)); }
+  catch (e: any) { console.warn('채널 분석 실패:', e.message); }
+  try { console.log('편성:', JSON.stringify(await call('/api/editorial/plan', {})).slice(0, 300)); }
+  catch (e: any) { console.warn('편성 실패:', e.message); }
+  return r;
+}
+
 async function main() {
   const mode = process.env.MODE || 'factory';
   const contentId = process.env.CONTENT_ID || undefined;
@@ -50,8 +61,12 @@ async function main() {
   try {
     if (mode === 'daily') {
       const s = await settings();
+      // 조사 시작 전: 내 채널 성과 수집 → 점수 → 편성 (실패해도 생산은 진행)
+      try { await channels(); } catch (e: any) { console.warn('채널 단계 실패:', e.message); }
       if (!s.daily_enabled) return console.log('매일 자동 생산 꺼짐 — 종료');
       await factory(undefined, '');
+    } else if (mode === 'channels') {
+      await channels();
     } else if (mode === 'factory') {
       await factory(contentId, topic);
     } else if (mode === 'render') {

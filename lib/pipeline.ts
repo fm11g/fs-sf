@@ -8,6 +8,7 @@ import { notify } from './notify';
 import { fewShotBlock, judgeCandidates, learnCounts, recordEditExemplar } from './learn';
 import { exportNow, exportRun } from './export';
 import { sopHash } from './sop';
+import { editorialBrief, noveltyChecks } from './editorial';
 export { getOutput, getSettings };
 import { STEP_DEFS, STEP_KEYS, downstream, stepDef, type StepKey } from './steps';
 import type { Settings, StepRow } from './types';
@@ -162,6 +163,7 @@ async function prepare(step: StepKey, c: any, s: Settings, sop: Sop, feedback?: 
     prep.tpl = tpl;
     prep.slots = ctx.slots = parseSlots(tpl.html);
   }
+  if (step === 'research' || step === 'plan') { try { ctx.brief = await editorialBrief(c, step); } catch { /* 편성 없음 */ } }
   prep.system = buildSystem(s, step, sop);
   prep.prompt = USER[step](ctx);
   // 점수 기반 최적화 ①: 운영자가 높은 점수를 준 예시와 낮은 점수 이유를 참고로 주입
@@ -292,6 +294,7 @@ async function settle(step: StepKey, contentId: string, row: StepRow, s: Setting
   let c = await loadContent(contentId);
   let usage = gen.usage;
   let checks = lint(step, gen.output, c, s, { slots: gen.slots });
+  try { const nv = await noveltyChecks(step, gen.output, c); if (nv.length) checks = [...checks.filter((x) => x.level !== 'ok'), ...nv]; } catch { /* 무시 */ }
   let aiReview: any = null;
   let state: StepRow['state'] = 'review';
   let decidedBy: string | null = null;

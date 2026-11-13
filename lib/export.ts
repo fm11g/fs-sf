@@ -39,10 +39,13 @@ const SHEET = {
   outputs: ['기록시각', '콘텐츠ID', '슬러그', '주제', '단계', '시도', '상태', '결정', '제공자', '모델', 'SOP버전', '자유도', '후보수', 'AI예측점수', '오류수', '경고수', '작업초', '입력토큰', '출력토큰', '요약', 'GitHub경로', '산출물JSON', ...FEATURE_COLUMNS],
   ratings: ['기록시각', '평가ID', '콘텐츠ID', '슬러그', '주제', '단계', '점수', '등급', '종류', '내태그', '메모', '제공자', '모델', 'SOP버전', '사람수정', 'GitHub경로', ...FEATURE_COLUMNS],
   sop_changes: ['기록시각', '제안ID', '단계', '종류', '상태', '결정', '요약', '변경수', '반영수', '변경내용', 'GitHub경로'],
+  channel_posts: ['기준일', '플랫폼', '링크', '제목', '게시일', '경과일', '조회', '좋아요', '댓글', '공유', '저장', '시청유지', '최종점수', '성숙도', '주제분류', '각도', '훅', '구성', '대상', '댓글요약', '시청자요청', '신청의향', '공장콘텐츠ID'],
+  editorial: ['편성일', '순서', '날짜', '주제분류', '각도', '훅', '구성', '대상', '제목 아이디어', '이유', '흐름', '예상점수', '실험', '고정', '배정콘텐츠'],
   performance: ['기준일', '슬러그', '주제', '게시일', '랜딩조회', '버튼클릭', '신청', '전환율(%)', '평균점수', '평가수', '유튜브'],
 };
 
 async function enqueue(kind: string, ref: string, p: { files?: DataFile[]; message?: string; sheet?: { tab: keyof typeof SHEET; rows: any[][] } }) {
+  if (p.sheet && !p.sheet.rows.length) delete p.sheet;
   const s = await getSettings();
   const rows: any[] = [];
   if (s.export_github !== false && p.files?.length && dataRepoConfig(s).repo) rows.push({ target: 'github', kind, ref, payload: { files: p.files, message: p.message || `data: ${kind} ${ref}` } });
@@ -144,6 +147,27 @@ export async function exportSopChange(proposalId: number) {
     ],
     message: `data(sop): ${no}-${step} 제안 #${p.id} ${p.status}`,
     sheet: { tab: 'sop_changes', rows: [[kst(), p.id, `${no} ${stepDef(step).label}`, p.kind, p.status, p.decided_by || '', p.summary || '', (p.changes || []).length || (p.changelog || []).length, (p.applied_changes || []).length, p.kind === 'rewrite' ? p.changelog : p.changes, hist]] },
+  });
+}
+
+/** 채널 성과 일별 스냅샷 */
+export async function exportChannelSnapshot(posts: any[]) {
+  const day = ymd();
+  const lite = posts.map((p) => ({ id: p.id, platform: p.platform, external_id: p.external_id, url: p.url, title: p.title, published_at: p.published_at, content_id: p.content_id, metrics: p.metrics, perf: p.perf, attrs: p.attrs, comment_analysis: p.comment_analysis, comments: p.comments }));
+  return enqueue('channel', day, {
+    files: [{ path: `data/channel/${day}.json`, content: J({ type: 'channel_snapshot', date: day, posts: lite }) }],
+    message: `data(channel): ${day} 영상 ${posts.length}개 성과`,
+    sheet: { tab: 'channel_posts', rows: posts.map((p) => [day, p.platform, p.url, p.title, ymd(p.published_at), p.perf?.age_days ?? '', p.metrics?.views ?? '', p.metrics?.likes ?? '', p.metrics?.comments ?? '', p.metrics?.shares ?? '', p.metrics?.saves ?? '', p.metrics?.avg_view_pct ?? p.metrics?.avg_watch_sec ?? '', p.perf_score ?? '', p.perf?.maturity ?? '',
+      p.attrs?.topic_category ?? '', p.attrs?.angle ?? '', p.attrs?.hook_type ?? '', p.attrs?.format ?? '', p.attrs?.target ?? '', p.comment_analysis?.summary ?? '', (p.comment_analysis?.requests || []).join(' / '), p.comment_analysis?.intent ?? '', p.content_id ?? '']) },
+  });
+}
+
+/** 편성표 */
+export async function exportEditorial(plan: any) {
+  return enqueue('editorial', String(plan.id), {
+    files: [{ path: `data/editorial/${plan.start_date}-p${plan.id}.json`, content: J(plan) }],
+    message: `data(editorial): ${plan.start_date} 편성 #${plan.id}`,
+    sheet: { tab: 'editorial', rows: (plan.slots || []).map((x: any, i: number) => [plan.start_date, i + 1, x.date, x.topic_category, x.angle, x.hook_type, x.format, x.target, x.title_idea || '', x.reason || '', x.flow_note || '', x.expected ?? '', x.experiment ? 'Y' : '', x.locked ? 'Y' : '', x.content_id || '']) },
   });
 }
 

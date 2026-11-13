@@ -1,7 +1,7 @@
 # 설치
 
 ## 1. Supabase
-1. 새 프로젝트 → SQL Editor에서 `supabase/migrations/001_init.sql`, `002_workflow.sql`, `003_providers.sql`, `004_learning_notify.sql`, `005_scores_export.sql` 순서로 실행
+1. 새 프로젝트 → SQL Editor에서 `supabase/migrations/001_init.sql`, `002_workflow.sql`, `003_providers.sql`, `004_learning_notify.sql`, `005_scores_export.sql`, `006_channels_editorial.sql` 순서로 실행
 2. Authentication → Users → 관리자 계정 생성(이메일·비밀번호)
 3. SQL: `insert into admins (email) values ('관리자 이메일');`
 4. Settings → API에서 `URL`, `anon key`, `service_role key` 복사
@@ -18,6 +18,7 @@
 | `FISH_AUDIO_API_KEY` | Fish Audio API 키 |
 | `YT_CLIENT_ID` `YT_CLIENT_SECRET` `YT_REFRESH_TOKEN` | 4번에서 발급 |
 | `IG_USER_ID` `IG_ACCESS_TOKEN` | 4번에서 발급 |
+| `YT_API_KEY` (선택) | YouTube Data API 키 — OAuth 없이 채널 공개 지표 수집 |
 
 3. Fine-grained PAT 발급(이 저장소, Contents: Read and write) → Vercel의 `GITHUB_TOKEN`
 
@@ -35,7 +36,7 @@
 
 **인스타그램**
 1. 비즈니스/크리에이터 계정 + 연결된 페이스북 페이지
-2. Meta 개발자 앱 → `instagram_content_publish`, `instagram_manage_comments` 권한의 장기 토큰
+2. Meta 개발자 앱 → `instagram_content_publish`, `instagram_manage_comments`, `instagram_manage_insights`(채널 성과) 권한의 장기 토큰
 3. 프로필 링크를 `https://사이트/l/today` 로 설정
 
 ## 5. 관리자 초기 세팅 (순서대로)
@@ -53,7 +54,10 @@
 ## 7. 이메일 알림 (권장)
 Vercel 에 `RESEND_API_KEY`+`EMAIL_FROM` 또는 `SMTP_*`, 그리고 `CRON_SECRET` 을 넣고 → 관리자 설정 → 📧 이메일 알림에서 받는 주소 저장 → 테스트 메일. 자세히: [LEARNING-NOTIFY.md](LEARNING-NOTIFY.md)
 
-## 8. 데이터 저장 (권장)
+## 8. 채널 성과 · 편성 (권장)
+관리자 → 채널 성과에 유튜브·인스타 링크 저장 → "지금 수집". 유튜브 공유수·시청 지속률까지 쓰려면 설정 → 유튜브 채널 연결을 한 번 더 해서 새 `YT_REFRESH_TOKEN` 을 GitHub Secret 에 저장(Analytics 권한 추가). 자세히: [CHANNELS-EDITORIAL.md](CHANNELS-EDITORIAL.md)
+
+## 8-1. 데이터 저장 (권장)
 GitHub: `GITHUB_TOKEN` 에 Contents 쓰기 권한이 있으면 같은 저장소의 `data` 브랜치에 자동 저장 → 설정 → 데이터 저장 → "GitHub 테스트". 구글 시트: 서비스 계정 또는 Apps Script(`integrations/google-sheets/Code.gs`) → "시트 테스트". 자세히: [DATA-SCORES.md](DATA-SCORES.md)
 
 ## 9. 에이전트 연결 (선택)

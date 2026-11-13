@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth';
 import { sbAdmin } from '@/lib/supabase/server';
 import { ensureSteps, newSlug } from '@/lib/pipeline';
+import { claimSlot } from '@/lib/editorial';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,5 +16,7 @@ export async function POST(req: NextRequest) {
     .select('id, slug').single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   await ensureSteps(data.id);
-  return NextResponse.json(data);
+  // 조사 전에 오늘 편성 슬롯 배정 (채널 성과 × 새로움)
+  const editorial = await claimSlot(data.id).catch((e) => ({ error: e.message }));
+  return NextResponse.json({ ...data, editorial });
 }

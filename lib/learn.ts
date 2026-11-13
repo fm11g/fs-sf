@@ -50,7 +50,7 @@ export async function rateOutput(step: StepKey, contentId: string, o: { score: n
     provider: row.provider || null, model: row.model || null, updated_at: new Date().toISOString(),
   };
   // 같은 산출물에 대한 기존 평가(사람 수정 예 제외) → 갱신
-  const { data: prev } = await db.from('exemplars').select('id, output, github_path, used_in').eq('content_id', contentId).eq('step', step).neq('kind', 'edit').order('id', { ascending: false }).limit(5);
+  const { data: prev } = await db.from('exemplars').select('id, output, github_path, used_in').eq('content_id', contentId).eq('step', step).neq('kind', 'edit').neq('source', 'performance').order('id', { ascending: false }).limit(5);
   const hit = (prev || []).find((p: any) => same(p.output, output));
   let ex: any;
   if (hit) {
@@ -65,6 +65,28 @@ export async function rateOutput(step: StepKey, contentId: string, o: { score: n
     await exportNow(() => exportRating(ex.id));
   }
   return { exemplar: ex, updated: !!hit, ...(await learnCounts(step)) };
+}
+
+/** 채널 성과 점수 → 평가 (source=performance, 콘텐츠·단계당 1건을 갱신). 사람 평가와 별도로 쌓인다 */
+export async function recordPerformanceRating(step: StepKey, contentId: string, score: number, tags: string[], note: string) {
+  const db = sbAdmin();
+  const { c, row, output } = await snapshot(step, contentId);
+  if (output == null) return null;
+  const sc = Math.min(5, Math.max(1, Math.round(score)));
+  const base = {
+    score: sc, kind: kindOf(sc), tags, note, topic: c.topic, source: 'performance', features: features(step, output, { c, row }),
+    input: row.ai_input || null, sop_hash: row.sop_hash || null, provider: row.provider || null, model: row.model || null, updated_at: new Date().toISOString(),
+  };
+  const { data: prev } = await db.from('exemplars').select('id, score, tags, github_path').eq('content_id', contentId).eq('step', step).eq('source', 'performance').maybeSingle();
+  if (prev) {
+    if (prev.score === sc && same(prev.tags, tags)) return prev.id;
+    await db.from('exemplars').update({ ...base, ...(prev.score !== sc ? { used_in: null } : {}) }).eq('id', prev.id);
+    await exportNow(() => exportRating(prev.id, prev.github_path));
+    return prev.id;
+  }
+  const { data } = await db.from('exemplars').insert({ ...base, content_id: contentId, step, output }).select('id').single();
+  if (data) await exportNow(() => exportRating(data.id));
+  return data?.id ?? null;
 }
 
 /** 이전 버전 호환: 👍 = 4점, 👎 = 2점 */

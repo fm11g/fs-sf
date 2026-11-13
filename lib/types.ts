@@ -29,6 +29,15 @@ export type Settings = {
   sheets_secret: string;
   fewshot_k: number;
   fewshot_min_score: number;
+  youtube_channel: string;
+  instagram_account: string;
+  channel_lookback_days: number;
+  editorial_enabled: boolean;
+  novelty_strength: number;
+  explore_rate: number;
+  cooldown_days: number;
+  perf_to_learning: boolean;
+  perf_weights: Record<string, number>;
 };
 
 export type ScriptScene = { id: string; narration: string; captions: string[] };
@@ -62,6 +71,7 @@ export type Content = {
   script: { total_chars?: number; scenes: ScriptScene[] } | null;
   design: Design | null;
   offer: any;
+  editorial?: any;
   copy: any;
   post: any;
   audio: any;

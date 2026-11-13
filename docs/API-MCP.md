@@ -33,6 +33,8 @@ claude.ai 커스텀 커넥터는 OAuth 방식만 받는 경우가 있어, 헤더
 | `exemplar_mark` | (이전 방식) good=4점 / bad=2점 |
 | `sop_learn_status` / `sop_learn_propose` | 학습 재료 현황 / SOP 보완 제안 생성 |
 | `sop_proposals` / `sop_proposal_decide` | 제안 목록 / 반영(선택·문구 수정)·거절·되돌리기 |
+| `channel_insights` / `channels_sync` / `channels_analyze` | 채널 성과 인사이트 / 수집 요청 / 분석·점수 재계산 |
+| `editorial_plan` / `editorial_update_slot` | 편성표 조회·다시 편성 / 슬롯 수정·이동·고정 |
 | `render_request` / `publish_request` | 워커에 렌더 / 게시 요청 |
 
 사용 예 (Claude Code): "tpf 현황판 보고 검수 대기인 것 요약해줘", "오늘 콘텐츠 03 대사를 더 단호한 어조로 재생성하고 결과 보여줘", "기획 SOP 집중 포인트 맨 위에 '마감 훅 우선' 추가해줘".
@@ -56,6 +58,8 @@ claude.ai 커스텀 커넥터는 OAuth 방식만 받는 경우가 있어, 헤더
 | GET/POST `/api/learn` | `{action: propose|consolidate|apply|reject|revert, step|id, selected?, edits?, content?, force?, instruction?}` | SOP 보완·재정리 |
 | GET/POST `/api/export` | `{action: flush|rebuild|test_github|test_sheets}` | 데이터 내보내기 |
 | POST `/api/notify` · `/api/notify/test` | `{event, contentId?, step?}` · `{kind: basic|digest}` | 알림 발송 / 테스트 |
+| GET/POST `/api/channels` · POST `/api/channels/analyze` | `{action: save_links|sync|analyze|set_attrs}` | 채널 성과 |
+| GET/POST `/api/editorial` · POST `/api/editorial/plan` | `{action: build|update_slot|move|claim|knobs}` | 편성표 |
 | GET `/api/cron/daily` | `Authorization: Bearer $CRON_SECRET` | 하루 요약 + 학습 제안 일괄 |
 | POST `/api/pipeline/advance` | `{contentId}` | 다음 단계 1개. `action`: continue · wait_review · worker · running · done |
 | POST `/api/steps/decide` | `{contentId, step, decision, note?}` | 승인 / 반려 |

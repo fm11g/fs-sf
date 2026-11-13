@@ -4,6 +4,8 @@ import { providersStatus, resolveChain } from '@/lib/llm';
 import { applyProposal, consolidateSop, learnCounts, learningSummary, markExemplar, proposeSop, rateOutput, rejectProposal, revertProposal } from '@/lib/learn';
 import { exportStatus, flushExports, rebuildDatasets } from '@/lib/export';
 import { tagsFor } from '@/lib/tags';
+import { activePlan, buildPlan, claimSlot, moveSlot, updateSlot } from '@/lib/editorial';
+import { analyzeChannels, channelInsights } from '@/lib/channels';
 import { board, metrics } from '@/lib/ops';
 import { getSop, listSops, saveSop } from '@/lib/sop';
 import { dispatch } from '@/lib/github';
@@ -28,7 +30,8 @@ const TOOLS: { name: string; description: string; inputSchema: any; run: (a: any
     const { data, error } = await sbAdmin().from('contents').insert({ slug: newSlug(), topic: a.topic || null, status: 'working', current_step: 'research' }).select('id, slug').single();
     if (error) throw new Error(error.message);
     await ensureSteps(data.id);
-    return data;
+    const editorial = await claimSlot(data.id).catch((e: any) => ({ error: e.message }));
+    return { ...data, editorial };
   } },
   { name: 'content_get', description: '콘텐츠의 단계 상태·AI 의견·검수 결과와 산출물 조회. step 을 주면 그 단계 산출물 전문', inputSchema: obj({ content_id: str, step: stepEnum }, ['content_id']), run: async (a) => {
     const { data: c } = await sbAdmin().from('contents').select('*').eq('id', a.content_id).single();
@@ -71,6 +74,11 @@ const TOOLS: { name: string; description: string; inputSchema: any; run: (a: any
   } },
   { name: 'sop_proposal_decide', description: 'SOP 제안 처리. apply: 보완 제안은 selected(변경 번호, 0부터)·edits({번호: 새 문구}), 재정리안은 content(다듬은 md, 선택)·force / reject / revert(반영 되돌리기). 운영자가 결정했을 때만 호출', inputSchema: obj({ id: { type: 'number' }, decision: { type: 'string', enum: ['apply', 'reject', 'revert'] }, selected: { type: 'array', items: { type: 'number' } }, edits: { type: 'object' }, content: str, force: { type: 'boolean' }, note: str }, ['id', 'decision']), run: (a) =>
     a.decision === 'apply' ? applyProposal(a.id, { selected: a.selected, edits: a.edits, content: a.content, force: !!a.force, note: a.note, by: 'human' }) : a.decision === 'reject' ? rejectProposal(a.id, a.note) : revertProposal(a.id) },
+  { name: 'channel_insights', description: '내 유튜브·인스타 영상 성과: 형태별(주제 분류·각도·훅·구성·대상) 평균 최종 점수·마지막 사용일, 상위/하위 영상, 시청자 요청(댓글), 최근 흐름', inputSchema: obj({}), run: async () => { const i = await channelInsights(); return { ...i, posts: i.posts.slice(0, 20).map((p: any) => ({ platform: p.platform, title: p.title, published_at: p.published_at, metrics: p.metrics, score: p.perf_score, maturity: p.perf?.maturity, attrs: p.attrs, comments: p.comment_analysis?.summary })) }; } },
+  { name: 'channels_sync', description: '채널 수집을 워커에 요청 (유튜브·인스타 지표·댓글 → 분석·점수 → 편성 갱신). 2~5분', inputSchema: obj({}), run: async () => { await dispatch('channels', {}); return { ok: true }; } },
+  { name: 'channels_analyze', description: '이미 수집된 영상으로 댓글 분석·형태 분류·최종 점수·성과 학습만 다시 실행', inputSchema: obj({ reanalyze: { type: 'boolean' } }), run: (a) => analyzeChannels({ reanalyze: !!a.reanalyze }) },
+  { name: 'editorial_plan', description: '편성표 조회(build=false) 또는 다시 편성(build=true, 배정·고정 슬롯 유지). 슬롯: 날짜·주제 분류·각도·훅·구성·대상·제목 아이디어·이유·흐름·실험 여부', inputSchema: obj({ build: { type: 'boolean' } }), run: async (a) => (a.build ? (await buildPlan({ force: true })).plan : activePlan()) },
+  { name: 'editorial_update_slot', description: '편성 슬롯 수정 (0부터 번호). patch: topic_category·angle·hook_type·format·target·title_idea·locked 등 / move: -1(앞으로) 1(뒤로)', inputSchema: obj({ index: { type: 'number' }, patch: { type: 'object' }, move: { type: 'number', enum: [-1, 1] } }, ['index']), run: (a) => (a.move ? moveSlot(a.index, a.move) : updateSlot(a.index, a.patch || {})) },
   { name: 'render_request', description: '음성·자막·BGM·모션그래픽 렌더를 워커에 요청 (대사·디자인 승인 필요, 3~6분)', inputSchema: obj({ content_id: str }, ['content_id']), run: async (a) => {
     await requireApproved(a.content_id, 'render');
     await sbAdmin().from('steps').update({ state: 'running', started_at: new Date().toISOString() }).eq('content_id', a.content_id).eq('step', 'render');
@@ -92,7 +100,7 @@ async function handle(m: any) {
   if (m.id === undefined) return null; // notification
   switch (m.method) {
     case 'initialize':
-      return rpc(m.id, { protocolVersion: m.params?.protocolVersion || '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'today-policy-fund', version: '0.5.0' },
+      return rpc(m.id, { protocolVersion: m.params?.protocolVersion || '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'today-policy-fund', version: '0.6.0' },
         instructions: '오늘의 정책자금 숏폼 공장. factory_board 로 현황을 보고, pipeline_advance 로 진행, 검수 대기 단계는 content_get 으로 확인 후 step_decide. 서버 제공자가 없으면 step_brief → 직접 작성 → step_submit. publish_request 는 운영자가 명시적으로 요청할 때만.' });
     case 'ping': return rpc(m.id, {});
     case 'tools/list': return rpc(m.id, { tools: TOOLS.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })) });

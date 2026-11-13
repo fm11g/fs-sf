@@ -14,8 +14,10 @@ export default function Board() {
   const [items, setItems] = useState<any[]>([]);
   const [topic, setTopic] = useState('');
   const [busy, setBusy] = useState(false);
+  const [slot, setSlot] = useState<any>(null);
   const load = () => api('/api/board').then((d) => setItems(d.items)).catch(() => {});
   useEffect(() => { load(); const t = setInterval(load, 15000); return () => clearInterval(t); }, []);
+  useEffect(() => { api('/api/editorial').then((r) => { const t = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10); setSlot((r.plan?.slots || []).find((x: any) => x.date === t) || null); }).catch(() => {}); }, []);
 
   const create = async () => {
     setBusy(true);
@@ -46,9 +48,12 @@ export default function Board() {
         <div className="kpi"><b>{items.filter((c) => c.published_at?.slice(0, 10) === todayStr).length}</b>오늘 게시</div>
       </div>
 
+      {slot && (
+        <div className="slotbanner">📅 오늘 편성 — <b>{[slot.topic_category, slot.angle, slot.hook_type, slot.format, slot.target].join(' · ')}</b>{slot.experiment ? ' [실험]' : ''}{slot.title_idea ? ` · ${slot.title_idea}` : ''}{slot.content_id ? ' · 배정됨' : ' · 새 숏폼을 만들면 이 슬롯이 배정됩니다'} <Link href="/admin/editorial">편성표</Link></div>
+      )}
       <div className="card">
         <div className="row">
-          <input style={{ flex: 1, minWidth: 260 }} placeholder="주제 힌트 (비우면 AI가 오늘 가장 시의성 있는 공고를 고릅니다)" value={topic} onChange={(e) => setTopic(e.target.value)} />
+          <input style={{ flex: 1, minWidth: 260 }} placeholder="주제 힌트 (비우면 오늘 편성 슬롯과 시의성으로 AI가 고릅니다)" value={topic} onChange={(e) => setTopic(e.target.value)} />
           <button className="pri" disabled={busy} onClick={create}>새 숏폼 (작업대 열기)</button>
           <button className="acc" disabled={busy} onClick={factory}>⚡ 워커로 자동 생산</button>
         </div>

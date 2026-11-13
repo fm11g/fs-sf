@@ -9,6 +9,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       <nav>
         <b>오늘의 정책자금 공장</b>
         <Link href="/admin">현황판</Link>
+        <Link href="/admin/editorial">편성표</Link>
+        <Link href="/admin/channels">채널 성과</Link>
         <Link href="/admin/metrics">작업 효율</Link>
         <Link href="/admin/sop">SOP · AI 제어</Link>
         <Link href="/admin/landing">랜딩 템플릿</Link>

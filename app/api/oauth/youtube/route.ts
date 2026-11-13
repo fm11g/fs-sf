@@ -12,7 +12,12 @@ export async function GET(req: NextRequest) {
   const url = oauthClient(req.nextUrl.origin).generateAuthUrl({
     access_type: 'offline',
     prompt: 'consent',
-    scope: ['https://www.googleapis.com/auth/youtube.upload', 'https://www.googleapis.com/auth/youtube.force-ssl'],
+    scope: [
+      'https://www.googleapis.com/auth/youtube.upload',
+      'https://www.googleapis.com/auth/youtube.force-ssl',
+      'https://www.googleapis.com/auth/youtube.readonly',
+      'https://www.googleapis.com/auth/yt-analytics.readonly', // 공유수·시청 지속률·구독 증가 (채널 성과 점수)
+    ],
   });
   return NextResponse.redirect(url);
 }

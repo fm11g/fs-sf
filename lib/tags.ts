@@ -51,17 +51,19 @@ export function features(step: string, out: any, ctx: { c?: any; row?: any; sopH
     candidates: row.candidates ?? 1,
     decided_by: row.decided_by || '-',
     agency: c.research?.program?.agency || '-',
+    slot_experiment: !!c.editorial?.experiment,
     month: String(c.created_at || new Date().toISOString()).slice(0, 7),
   };
   if (!out) return f;
   switch (step) {
     case 'research':
-      Object.assign(f, { facts: (out.facts || []).length, has_deadline: !!out.program?.deadline, keywords: (out.keywords || []).length });
+      Object.assign(f, { facts: (out.facts || []).length, has_deadline: !!out.program?.deadline, keywords: (out.keywords || []).length, topic_category: out.topic_category || '-' });
       break;
     case 'plan': {
       const chosen = (out.hook_options || []).find((h: any) => (typeof h === 'string' ? h : h.text) === out.chosen_hook);
       Object.assign(f, {
         hook_type: (chosen && typeof chosen === 'object' && chosen.type) || '-', mood: out.mood || '-',
+        angle: out.angle || c.editorial?.angle || '-', format: out.format || c.editorial?.format || '-', topic_category: c.research?.topic_category || out.topic_category || '-',
         scenes: (out.structure || []).length, seconds: (out.structure || []).reduce((n: number, x: any) => n + Number(x.seconds || 0), 0),
         hook_has_number: hasNum(out.chosen_hook),
       });
@@ -103,13 +105,13 @@ export function features(step: string, out: any, ctx: { c?: any; row?: any; sopH
 /** 시트·CSV 에서 별도 열로 구분하는 특징 키 (단계별로 없는 값은 빈칸) */
 export const FEATURE_COLUMNS = [
   'provider', 'model', 'sop', 'freedom', 'attempts', 'candidates', 'decided_by', 'agency', 'month',
-  'hook_type', 'mood', 'scenes', 'seconds', 'hook_has_number', 'chars', 'first_has_number', 'caption_max',
+  'topic_category', 'angle', 'format', 'slot_experiment', 'hook_type', 'mood', 'scenes', 'seconds', 'hook_has_number', 'chars', 'first_has_number', 'caption_max',
   'facts', 'has_deadline', 'keywords', 'benefits', 'cta_len', 'event_has_topic', 'slots', 'headline_has_number', 'headline_len',
   'layouts', 'title_font', 'stat_scenes', 'title_len', 'title_has_number', 'hashtags', 'body_chars', 'h2', 'tables', 'faq',
 ];
 
 /** 점수 분석용 태그: 내 태그 + 범주형 특징 (key=value) */
-const STAT_KEYS = ['provider', 'model', 'sop', 'freedom', 'candidates', 'hook_type', 'mood', 'scenes', 'hook_has_number', 'chars', 'first_has_number', 'has_deadline', 'benefits', 'headline_has_number', 'title_font', 'title_has_number', 'body_chars', 'event_has_topic'];
+const STAT_KEYS = ['provider', 'model', 'sop', 'freedom', 'candidates', 'topic_category', 'angle', 'format', 'slot_experiment', 'hook_type', 'mood', 'scenes', 'hook_has_number', 'chars', 'first_has_number', 'has_deadline', 'benefits', 'headline_has_number', 'title_font', 'title_has_number', 'body_chars', 'event_has_topic'];
 export const statTags = (e: { tags?: string[]; features?: Record<string, any> }) => [
   ...(e.tags || []),
   ...STAT_KEYS.filter((k) => e.features?.[k] != null && e.features[k] !== '-').map((k) => `${k}=${e.features![k]}`),

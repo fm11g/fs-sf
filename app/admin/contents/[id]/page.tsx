@@ -101,6 +101,9 @@ export default function Workbench({ params }: { params: { id: string } }) {
         </div>
       </div>
       {c.error && <div className="card bad">{c.error}</div>}
+      {c.editorial && (
+        <div className="slotbanner">📅 편성 슬롯 {c.editorial.date?.slice(5)} — <b>{[c.editorial.topic_category, c.editorial.angle, c.editorial.hook_type, c.editorial.format, c.editorial.target].filter(Boolean).join(' · ')}</b>{c.editorial.experiment ? ' [실험]' : ''}{c.editorial.title_idea ? ` · ${c.editorial.title_idea}` : ''} <Link href="/admin/editorial">편성표</Link></div>
+      )}
 
       <div className="bench">
         {/* 공정 레일 */}
