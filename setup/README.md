@@ -2,7 +2,7 @@
 
 ## 1. Supabase
 1. 새 프로젝트 생성 (리전: Northeast Asia (Seoul))
-2. **SQL Editor → New query** → `supabase-all-in-one.sql` 전체 붙여넣기 → **Run** → 마지막에 테이블 21개 목록이 나오면 완료
+2. **SQL Editor → New query** → `supabase-all-in-one.sql` 전체 붙여넣기 → **Run** → 마지막에 테이블 23개 목록이 나오면 완료
    (예전 버전 SQL 을 이미 실행했어도 그대로 다시 실행하면 됩니다)
 3. **Project Settings → API** 에서 Project URL · anon public · service_role 키 복사
 4. 관리자 계정은 여기서 만들지 않습니다 → 4단계 첫 가입에서 만듭니다

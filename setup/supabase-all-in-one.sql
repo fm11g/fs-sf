@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════════
--- 오늘의 정책자금 숏폼 공장 — Supabase 전체 설치 SQL (001 ~ 008 통합)
+-- 오늘의 정책자금 숏폼 공장 — Supabase 전체 설치 SQL (001 ~ 010 통합)
 -- 사용법: Supabase 대시보드 → SQL Editor → New query → 전체 붙여넣기 → Run
 -- 여러 번 실행해도 안전합니다(이미 있는 것은 건너뜀). 예전 버전을 이미 실행했어도 그대로 다시 실행하면 됩니다.
 -- 관리자 이메일은 여기서 넣지 않습니다: 배포 후 사이트에 처음 접속하면 '대표 계정 만들기' 화면이 나옵니다.
@@ -598,5 +598,83 @@ where a.email = c.email and c.rn = 1
   and c.u ~ '^[a-z0-9][a-z0-9._-]{2,19}$'
   and not exists (select 1 from public.admins b where lower(b.username) = c.u);
 
--- 확인용: 테이블 목록 (21개가 나오면 완료)
+-- ┌──────────────────────────────────────────────
+-- │ 009_usage.sql
+-- └──────────────────────────────────────────────
+-- 009: API 사용 기록부 — 모든 산출물마다 어떤 플랫폼·모델·생각 깊이로 얼마나(토큰·검색·글자·분) 썼는지
+create table if not exists public.usage_log (
+  id bigserial primary key,
+  at timestamptz not null default now(),
+  content_id uuid references public.contents(id) on delete set null,
+  step text,                 -- 공정 단계 (research … publish)
+  task text,                 -- 작업 키 (lib/models.ts TASKS: plan, review, judge, fix, learn, reference …)
+  kind text not null default 'llm',   -- llm | search | tts | stt | render | upload | analytics | email
+  platform text not null,    -- anthropic | openai | oss | tavily | searxng | fish | github | youtube | instagram | email | agent
+  model text,
+  effort text,               -- 생각 깊이 (low … max)
+  input_tokens bigint not null default 0,
+  output_tokens bigint not null default 0,   -- 생각 토큰 포함 (출력으로 청구)
+  cache_read_tokens bigint not null default 0,
+  cache_write_tokens bigint not null default 0,
+  searches int not null default 0,
+  units numeric not null default 0,           -- 글자·분·쿼터 등
+  unit text,
+  cost_usd numeric(14,6) not null default 0,
+  priced boolean not null default true,       -- false = 단가 미입력으로 0 처리
+  ok boolean not null default true,
+  error text,
+  ms int,
+  attempt int,               -- 같은 요청 안에서 몇 번째 시도 (제공자 전환 시 2, 3 …)
+  ref_table text, ref_id text,                -- 콘텐츠 밖 산출물 (sop_proposals, ref_videos, editorial_plans …)
+  by text                    -- 실행 주체 (계정 · auto · cron · worker · agent:이름)
+);
+create index if not exists usage_log_content on public.usage_log (content_id, step);
+create index if not exists usage_log_at on public.usage_log (at desc);
+create index if not exists usage_log_pm on public.usage_log (platform, model);
+create index if not exists usage_log_ref on public.usage_log (ref_table, ref_id);
+alter table public.usage_log enable row level security;
+drop policy if exists admin_all on public.usage_log;
+create policy admin_all on public.usage_log for all to authenticated using (public.is_admin()) with check (public.is_admin());
+
+-- 단계 행에 누적 비용 (작업대·효율 화면용 빠른 합계)
+alter table public.steps add column if not exists cost_usd numeric(14,6) not null default 0;
+alter table public.steps add column if not exists effort text;
+-- 학습 예시에도 어떤 모델로 만든 결과인지
+alter table public.exemplars add column if not exists effort text;
+
+-- ┌──────────────────────────────────────────────
+-- │ 010_cases.sql
+-- └──────────────────────────────────────────────
+-- 010: 실제 사례(후기) 목록 — 랜딩의 후기 카드(case{n}_*)는 AI 가 쓰지 않고 여기서 골라 원문 그대로 채움
+create table if not exists public.landing_cases (
+  id bigserial primary key,
+  industry text not null,            -- 업종 (예: 정보통신업(IT), 도배업)
+  years int,                         -- 사업 연차
+  who text not null,                 -- 카드 상단 표기: "정보통신업(IT) / 사업 2년차 / 김** 님"
+  amount text not null,              -- 승인금액 표기: "₩20,000,000"
+  amount_won bigint,                 -- 승인금액 숫자 (정렬·검증용)
+  count text,                        -- 총 정책자금 횟수: "1회"
+  rate text,                         -- 금리: "3%"
+  badge1 text, badge2 text,          -- 자금 용도 태그
+  title text not null,
+  body text not null,
+  img text,                          -- 사진 경로 (템플릿 기준 상대경로 가능: ./img/h9.jpg)
+  fund_type text,                    -- 운전자금·시설자금·창업자금 …
+  tags text[] not null default '{}', -- 선택 기준 키워드 (제조업, 매출하락, 저신용 …)
+  verified boolean not null default false, -- 실제 고객 동의·서류 확인 완료
+  active boolean not null default true,
+  note text,                         -- 내부 메모 (근거 서류 위치 등)
+  used_count int not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists landing_cases_active on public.landing_cases (active, verified);
+alter table public.landing_cases enable row level security;
+drop policy if exists admin_all on public.landing_cases;
+create policy admin_all on public.landing_cases for all to authenticated using (public.is_admin()) with check (public.is_admin());
+
+-- 랜딩 변형에 어떤 사례를 몇 번 카드에 넣었는지
+alter table public.landing_variants add column if not exists case_ids bigint[] not null default '{}';
+
+-- 확인용: 테이블 목록 (23개가 나오면 완료)
 select table_name from information_schema.tables where table_schema = 'public' order by table_name;

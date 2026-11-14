@@ -98,3 +98,9 @@ tpf brief <id> <step> | submit <id> <step> <file.json> [--agent 이름]
 tpf sop list|get|set … | render <id> | publish <id>
 ```
 `<id>` 자리에 `latest` 가능. 전체: `node bin/tpf.mjs help`.
+
+## 사용량 기록 (API 사용량 화면)
+- 공장 안에서 도는 모든 AI 호출은 자동으로 `usage_log` 에 남습니다 (플랫폼·모델·생각 깊이·토큰·검색·비용·성공 여부).
+- 에이전트가 직접 만든 산출물을 제출할 때 사용량을 같이 넘기면 비용까지 계산됩니다 (생략하면 '외부 에이전트'로만 기록):
+  - MCP `step_submit` 의 `usage`: `{ "model": "claude-opus-5-5", "platform": "anthropic", "effort": "high", "input_tokens": 12000, "output_tokens": 3000 }`
+  - CLI: `node bin/tpf.mjs submit <id> script out.json --agent claude-code --model claude-opus-5-5 --platform anthropic --in 12000 --out 3000`

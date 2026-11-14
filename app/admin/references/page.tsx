@@ -1,5 +1,6 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
+import UsagePanel from '../UsagePanel';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { sbBrowser } from '@/lib/supabase/client';
@@ -162,6 +163,7 @@ function Detail({ id, canWork, canSop, canMake, onBack }: { id: number; canWork:
         </div>
       )}
 
+      <UsagePanel query={`ref_table=ref_videos&ref_id=${r.id}`} title="이 영상 분석 API 사용" compact refreshKey={r.status} />
       {r.status === 'ready' && (
         <div className="grid2">
           <div className="card">

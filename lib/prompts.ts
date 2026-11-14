@@ -55,7 +55,7 @@ const revise = (prev: any, feedback?: string | null) =>
     ? `\n\n## 재작업 지시 (최우선 반영)\n${feedback}\n\n## 이전 산출물 (지시와 무관한 부분은 유지)\n${J(prev)}`
     : '';
 
-type Ctx = { s: Settings; c: any; prev?: any; feedback?: string | null; recentTopics?: string[]; slots?: any[]; brief?: string };
+type Ctx = { s: Settings; c: any; prev?: any; feedback?: string | null; recentTopics?: string[]; slots?: any[]; brief?: string; cases?: any[]; casePositions?: number };
 
 export const USER: Record<string, (x: Ctx) => string> = {
   research: (ctx) => { const { c, prev, feedback, recentTopics } = ctx; return  `오늘 숏폼으로 다룰 정책자금 주제를 조사하세요.
@@ -131,7 +131,7 @@ JSON 스키마:
 }
 objections 는 2~3개.${revise(prev, feedback)}`,
 
-  landing: ({ c, prev, feedback, slots }) => `오늘 숏폼의 확정 대사와 이벤트에 맞게 랜딩페이지 문구를 교체합니다. 목표는 신청 전환입니다.
+  landing: ({ c, prev, feedback, slots, cases, casePositions }) => `오늘 숏폼의 확정 대사와 이벤트에 맞게 랜딩페이지 문구를 교체합니다. 목표는 신청 전환입니다.
 조사: ${J(c.research)}
 확정 대사: ${J(c.script?.scenes?.map((x: any) => x.narration))}
 이벤트: ${J(c.offer)}
@@ -139,7 +139,16 @@ objections 는 2~3개.${revise(prev, feedback)}`,
 슬롯 목록 (key / 용도 / 최대 글자수 / 현재 문구 — 현재 문구의 길이·톤을 기준으로):
 ${(slots || []).map((x) => `- ${x.key} / ${x.label} / ${x.max ?? '제한없음'}자 / "${x.current}"`).join('\n')}
 
-JSON 스키마: { "values": { "슬롯key": "문구" }, ${AI_NOTES} } — 모든 슬롯 key 를 채웁니다.${revise(prev, feedback)}`,
+용도가 "(선택)" 으로 시작하는 슬롯은 조사·대사·이벤트에 근거가 있을 때만 쓰고, 없으면 빈 문자열("")로 둡니다 (화면에서 자동으로 숨겨짐). 숫자·마감·수량 제한을 지어내지 마세요.
+용도의 "—" 뒤는 그 슬롯의 작성 지침입니다.
+
+${cases?.length ? `
+실제 후기 카드 ${casePositions}칸: 문구를 쓰지 말고 아래 "등록된 실제 사례"에서 오늘 영상 타깃(업종·연차·자금 용도·상황)과 가장 가까운 순서로 id 를 고르세요.
+1번 카드가 가장 먼저 보입니다. 중복 없이 최대 ${casePositions}개. 사례 원문은 공장이 그대로 넣습니다.
+등록된 실제 사례:
+${cases.map((x: any) => `- #${x.id} | ${x.industry}${x.years ? ` ${x.years}년차` : ''} | ${[x.fund_type, x.badge1, x.badge2].filter(Boolean).join(' · ')} | ${x.amount} | "${x.title}"${x.tags?.length ? ` | ${x.tags.join(',')}` : ''}`).join('\n')}
+` : ''}
+JSON 스키마: { "values": { "슬롯key": "문구" },${cases?.length ? ' "cases": [사례 id 순서],' : ''} ${AI_NOTES} } — 모든 슬롯 key 를 포함합니다(선택 슬롯은 "" 가능).${revise(prev, feedback)}`,
 
   design: ({ c, prev, feedback }) => `기획: ${J(c.plan)}
 대본: ${J(c.script)}

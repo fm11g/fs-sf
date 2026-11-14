@@ -1,5 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { api } from '@/lib/api';
+import { caseValues, casePositions, isCaseKey } from '@/lib/cases';
 import { FONT_OPTIONS, type Content, type Design } from '@/lib/types';
 
 const charsNoSpace = (s: string) => s.replace(/\s/g, '').length;
@@ -181,16 +183,22 @@ export function CopyEditor({ c, onSave }: { c: Content; onSave: (v: any) => void
 
 export function LandingEditor({ slug, variant, slots, onSave }: { slug: string; variant: any; slots: any[]; onSave: (v: any) => void }) {
   const [vals, setVals] = useState<Record<string, string>>(variant?.values || {});
+  const [cases, setCases] = useState<any[]>([]);
   useEffect(() => setVals(variant?.values || {}), [variant]);
+  const pos = casePositions(slots);
+  const nums = Object.keys(pos).map(Number).sort((a, b) => a - b);
+  useEffect(() => { if (nums.length) api('/api/cases').then((d) => setCases(d.cases || [])).catch(() => {}); }, [nums.length]);
   if (!variant) return <div className="card">랜딩 문구 단계를 먼저 실행하세요. (활성 템플릿 필요)</div>;
-  const groups = slots;
+  const text = slots.filter((s) => !isCaseKey(s.key));
+  // 지금 n번 카드에 들어간 사례 (상단 표기 + 제목으로 찾음)
+  const current = (n: number) => cases.find((c) => c.who === vals[`case${n}_who`] && c.title === vals[`case${n}_title`]);
   return (
     <div className="card">
       <div className="row" style={{ justifyContent: 'space-between' }}>
         <h2>랜딩 슬롯 문구 <span className={`tag ${variant.is_live ? 'ok' : ''}`}>{variant.is_live ? '공개 중' : '게시 시 공개'}</span></h2>
         <a href={`/l/${slug}`} target="_blank">미리보기 ↗</a>
       </div>
-      {slots.map((s) => {
+      {text.map((s) => {
         const n = len(vals[s.key] || '');
         return (
           <div className="slot" key={s.key}>
@@ -200,6 +208,28 @@ export function LandingEditor({ slug, variant, slots, onSave }: { slug: string; 
           </div>
         );
       })}
+      {nums.length > 0 && (
+        <>
+          <h2 style={{ marginTop: 18 }}>실제 후기 카드 {nums.length}칸 <span className="mute">— 문구는 [실제 사례] 원문 그대로, 여기서는 카드별로 사례만 바꿈</span></h2>
+          {!cases.length && <p className="mute">등록된 사례가 없어 템플릿의 기본 후기가 그대로 나갑니다. [실제 사례] 메뉴에서 등록하세요.</p>}
+          {nums.map((n) => {
+            const cur = current(n);
+            return (
+              <div className="slot" key={n}>
+                <div><b>{n}번 카드</b><div className="mute">{vals[`case${n}_who`] || '템플릿 기본 후기'}</div></div>
+                <select value={cur?.id ?? ''} onChange={(e) => {
+                  const c = cases.find((x) => String(x.id) === e.target.value);
+                  if (c) setVals({ ...vals, ...caseValues(c, n, pos[n]) });
+                }} style={{ width: '100%' }}>
+                  <option value="">{cur ? '' : vals[`case${n}_title`] ? `(목록에 없는 문구) ${vals[`case${n}_title`]}` : '템플릿 기본 후기'}</option>
+                  {cases.filter((c) => c.active).map((c) => <option key={c.id} value={c.id}>#{c.id} {c.industry} · {c.amount} · {c.title}{c.verified ? '' : ' (확인 전)'}</option>)}
+                </select>
+                <span className="mute">{cur?.verified ? '확인 완료' : cur ? '확인 전' : ''}</span>
+              </div>
+            );
+          })}
+        </>
+      )}
       <button className="pri" onClick={() => onSave(vals)}>저장</button>
     </div>
   );

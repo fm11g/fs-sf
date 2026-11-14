@@ -3,7 +3,9 @@ import { markUsed, referenceBlock } from './references';
 import { ask, type Usage } from './llm';
 import { USER, buildSystem, reviewPrompt } from './prompts';
 import { sbAdmin } from './supabase/server';
+import { logUsage } from './usage';
 import { charLen, parseSlots, validate } from './landing';
+import { caseValues, casePositions, isCaseKey, rankCases, type CaseField, type LandingCase } from './cases';
 import { getSop, type Sop } from './sop';
 import { getOutput, getSettings } from './settings';
 import { notify } from './notify';
@@ -42,6 +44,12 @@ export async function ensureSteps(contentId: string): Promise<Record<StepKey, St
   await db.from('steps').upsert(STEP_KEYS.map((step) => ({ content_id: contentId, step })), { onConflict: 'content_id,step', ignoreDuplicates: true });
   const { data } = await db.from('steps').select('*').eq('content_id', contentId);
   return Object.fromEntries((data || []).map((r: any) => [r.step, r])) as any;
+}
+
+/** 이 단계에서 쓴 API 비용 합계 (후보·채점·글자수 축약·AI 검수·렌더·업로드 전부 = 사용 기록부 기준) */
+export async function stepCost(contentId: string, step: string): Promise<number> {
+  const { data } = await sbAdmin().from('usage_log').select('cost_usd').eq('content_id', contentId).eq('step', step);
+  return Math.round((data || []).reduce((n: number, r: any) => n + Number(r.cost_usd || 0), 0) * 1e6) / 1e6;
 }
 
 async function setStep(contentId: string, step: StepKey, patch: Record<string, any>) {
@@ -105,10 +113,13 @@ export function lint(step: StepKey, out: any, c: any, s: Settings, extra: { slot
     if (charLen(out?.cta || '') > 14) warn('버튼 문구 14자 초과');
   }
   if (step === 'landing') {
-    const slots = extra.slots || [];
+    const all = extra.slots || [];
+    const slots = all.filter((x: any) => !isCaseKey(x.key));
     const over = validate(slots, out || {});
     for (const o of over) err(`슬롯 ${o.key}: ${o.len}/${o.max}자 초과`);
-    const empty = slots.filter((x) => !(out || {})[x.key]).length;
+    for (const o of validate(all.filter((x: any) => isCaseKey(x.key)), out || {})) warn(`후기 ${o.key}: 원문 ${o.len}/${o.max}자 — 카드에서 넘칠 수 있음 (사례 원문은 자르지 않음)`);
+    if (all.some((x: any) => isCaseKey(x.key)) && !all.filter((x: any) => isCaseKey(x.key)).some((x: any) => (out || {})[x.key])) warn('실제 사례 목록이 비어 후기 카드는 템플릿 기본 후기 그대로입니다 — [실제 사례]에 등록하세요');
+    const empty = slots.filter((x) => !(out || {})[x.key] && !/^\(선택\)/.test(x.label)).length;
     if (empty) err(`비어 있는 슬롯 ${empty}개`);
     const thin = slots.filter((x) => x.max && (out || {})[x.key] && charLen(out[x.key]) < x.max * 0.4).length;
     if (thin) warn(`최대 글자수의 40% 미만인 슬롯 ${thin}개 (레이아웃이 빌 수 있음)`);
@@ -144,7 +155,7 @@ export function lint(step: StepKey, out: any, c: any, s: Settings, extra: { slot
 const hasError = (c: Check[]) => c.some((x) => x.level === 'error');
 
 // ── 생성: 준비(prepare) → LLM 또는 에이전트 → 마무리(finalize) ─────────
-type Prep = { system: string; prompt: string; webSearch: boolean; maxTokens: number; slots?: any[]; tpl?: any; refs?: number[]; refVideos?: number[] };
+type Prep = { system: string; prompt: string; webSearch: boolean; maxTokens: number; slots?: any[]; tpl?: any; refs?: number[]; refVideos?: number[]; cases?: LandingCase[]; casePos?: Record<number, CaseField[]> };
 type Gen = { output: any; notes: any; usage: Usage; slots?: any[]; provider?: string; model?: string; tried?: any[]; input?: { system: string; prompt: string }; candidates?: number; pred_score?: number | null; judge?: any; refs?: number[] };
 
 /** 이 단계에서 모델(또는 에이전트)이 받을 지시문 전체 */
@@ -163,7 +174,18 @@ async function prepare(step: StepKey, c: any, s: Settings, sop: Sop, feedback?: 
     const { data: tpl } = await db.from('landing_templates').select('*').eq('is_active', true).maybeSingle();
     if (!tpl) throw new Error('활성 랜딩 템플릿이 없습니다. [랜딩 템플릿] 메뉴에서 등록하세요.');
     prep.tpl = tpl;
-    prep.slots = ctx.slots = parseSlots(tpl.html);
+    prep.slots = parseSlots(tpl.html);
+    // 후기 카드(case{n}_*)는 AI 가 쓰지 않음 → 문구 슬롯만 넘기고, 사례는 목록에서 "고르기"만
+    ctx.slots = prep.slots.filter((x: any) => !isCaseKey(x.key));
+    const pos = casePositions(prep.slots);
+    if (Object.keys(pos).length) {
+      const { data: all } = await db.from('landing_cases').select('*').eq('active', true).order('id');
+      const list = (all || []) as LandingCase[];
+      // 확인 완료(verified) 사례가 있으면 그것만 사용
+      prep.cases = ctx.cases = list.some((x) => x.verified) ? list.filter((x) => x.verified) : list;
+      prep.casePos = pos;
+      ctx.casePositions = Object.keys(pos).length;
+    }
   }
   if (step === 'research' || step === 'plan') { try { ctx.brief = await editorialBrief(c, step); } catch { /* 편성 없음 */ } }
   prep.system = buildSystem(s, step, sop);
@@ -213,23 +235,43 @@ async function finalize(step: StepKey, c: any, s: Settings, raw: any, prep: Prep
 
   if (step === 'landing') {
     const slots = prep.slots || [];
-    let values: Record<string, string> = out.values || out;
-    const over = validate(slots, values);
+    let values: Record<string, string> = { ...(out.values || out) };
+    delete (values as any).cases;
+    // AI 가 후기 칸을 직접 썼어도 버림 — 실제 사례 원문으로만 채움
+    for (const k of Object.keys(values)) if (isCaseKey(k)) delete values[k];
+    let caseIds: number[] = [];
+    if (prep.casePos && prep.cases?.length) {
+      const positions = Object.keys(prep.casePos).map(Number).sort((a, b) => a - b);
+      const byId = new Map(prep.cases.map((x) => [Number(x.id), x]));
+      const picked = [...new Set(((out.cases || []) as any[]).map(Number))].filter((id) => byId.has(id));
+      // 고른 게 모자라면 오늘 주제와 겹치는 사례로 채움
+      const topicText = [c.topic, JSON.stringify(c.research || {}).slice(0, 3000), JSON.stringify(c.plan || {}).slice(0, 1500)].join(' ');
+      for (const x of rankCases(prep.cases, topicText)) { if (picked.length >= positions.length) break; if (!picked.includes(Number(x.id))) picked.push(Number(x.id)); }
+      caseIds = picked.slice(0, positions.length);
+      caseIds.forEach((id, i) => Object.assign(values, caseValues(byId.get(id)!, positions[i], prep.casePos![positions[i]])));
+    }
+    const over = validate(slots.filter((x: any) => !isCaseKey(x.key)), values);
     if (over.length) {
       try { // 글자수 초과분만 자동 축약 (서버 제공자가 없으면 건너뛰고 규칙 검사에서 오류로 표시)
         const fix = await ask<{ values: Record<string, string> }>({
           system: '당신은 카피 편집자입니다. 의미를 유지하면서 글자수(공백 포함, \\n 제외)를 줄입니다.',
           prompt: `다음 문구를 각 최대 글자수 이하로 줄이세요.\n${over.map((o) => `- ${o.key} (최대 ${o.max}자): "${o.value}"`).join('\n')}\nJSON: { "values": { "key": "문구" } }`,
-          chain: s.llm_chain, task: 'fix',
+          chain: s.llm_chain, task: 'fix', meta: { contentId: c.id, step: 'landing' },
         });
         usage = add(usage, fix.usage);
         values = { ...values, ...fix.data.values };
       } catch { /* 규칙 검사에 맡김 */ }
     }
     await db.from('landing_variants').upsert(
-      { content_id: c.id, template_id: prep.tpl.id, slug: c.slug, values, warnings: validate(slots, values) },
+      { content_id: c.id, template_id: prep.tpl.id, slug: c.slug, values, warnings: validate(slots, values), case_ids: caseIds },
       { onConflict: 'content_id' },
     );
+    if (caseIds.length) {
+      for (const id of caseIds) {
+        const x = prep.cases!.find((y) => Number(y.id) === id);
+        await db.from('landing_cases').update({ used_count: Number(x?.used_count || 0) + 1 }).eq('id', id);
+      }
+    }
     return { output: values, notes, usage, slots };
   }
 
@@ -244,7 +286,7 @@ async function generate(step: StepKey, c: any, s: Settings, sop: Sop, feedback?:
   const req = {
     system: prep.system, prompt: prep.prompt, webSearch: prep.webSearch, maxTokens: prep.maxTokens,
     mcp: step === 'research' ? s.mcp_servers : undefined,
-    chain: s.llm_chain, prefer: prefer || sop.provider, task: step,
+    chain: s.llm_chain, prefer: prefer || sop.provider, task: step, meta: { contentId: c.id, step },
   };
   // 점수 기반 최적화 ②: 후보 N개(SOP 의 best_of) → 운영자 채점 기준으로 점수 예측 → 최고 선택
   const n = Math.max(1, Math.min(4, Number(sop.best_of || 1)));
@@ -256,7 +298,7 @@ async function generate(step: StepKey, c: any, s: Settings, sop: Sop, feedback?:
   let judge: any = null;
   if (ok.length > 1) {
     try {
-      judge = await judgeCandidates(step, ok.map((r: any) => { const d = { ...r.data }; delete d._ai; return d; }), s, sop.content);
+      judge = await judgeCandidates(step, ok.map((r: any) => { const d = { ...r.data }; delete d._ai; return d; }), s, sop.content, { contentId: c.id, step });
       usage = add(usage, judge.usage);
       pick = judge.best;
     } catch { /* 채점 실패 → 첫 후보 */ }
@@ -276,7 +318,7 @@ async function generate(step: StepKey, c: any, s: Settings, sop: Sop, feedback?:
 async function review(step: StepKey, c: any, s: Settings, sop: Sop, output: any, checks: Check[]) {
   const inputs = Object.fromEntries(await Promise.all(stepDef(step).deps.map(async (d) => [d, await getOutput(d, c)])));
   if (step === 'offer') (inputs as any).available_offers = s.offers;
-  const res = await ask<any>({ ...reviewPrompt(s, step, sop, inputs, output, checks), maxTokens: 4000, chain: s.llm_chain, task: 'review' });
+  const res = await ask<any>({ ...reviewPrompt(s, step, sop, inputs, output, checks), maxTokens: 4000, chain: s.llm_chain, task: 'review', meta: { contentId: c.id, step } });
   if (hasError(checks)) res.data.verdict = 'revise';
   return res;
 }
@@ -336,7 +378,8 @@ async function settle(step: StepKey, contentId: string, row: StepRow, s: Setting
     state, decided_by: decidedBy, decided_at: decidedBy ? t : null,
     decision_note: decidedBy === 'ai' ? aiReview?.summary ?? null : null,
     ai_notes: gen.judge ? { ...(gen.notes || {}), judge: gen.judge } : gen.notes, ai_review: aiReview, checks, feedback: null, finished_at: t, ai_output: gen.output ?? null,
-    provider: gen.provider ?? null, model: gen.model ?? null,
+    provider: gen.provider ?? null, model: gen.model ?? null, effort: gen.model?.split(' · ')[1] ?? null,
+    cost_usd: await stepCost(contentId, step),
     ai_input: gen.input ?? null, sop_hash: sopHash(sop.content), freedom: sop.freedom, candidates: gen.candidates ?? 1, refs: gen.refs ?? null,
     pred_score: gen.pred_score ?? (aiReview?.score != null ? Math.round((Number(aiReview.score) / 20) * 10) / 10 : null),
     attempts: row.attempts + 1 + extra,
@@ -401,7 +444,8 @@ export async function stepBrief(step: StepKey, contentId: string, feedback?: str
 }
 
 /** 에이전트가 만든 산출물 제출 → 후처리·규칙 검사·게이트 적용 */
-export async function stepSubmit(step: StepKey, contentId: string, output: any, agent = 'agent') {
+export type AgentUsage = { model?: string; platform?: string; effort?: string; input_tokens?: number; output_tokens?: number; cache_read_tokens?: number; searches?: number };
+export async function stepSubmit(step: StepKey, contentId: string, output: any, agent = 'agent', usage?: AgentUsage | null) {
   if (stepDef(step)?.kind !== 'ai') throw new Error('AI 단계만 가능합니다');
   const c = await loadContent(contentId);
   const rows = await ensureSteps(contentId);
@@ -412,7 +456,15 @@ export async function stepSubmit(step: StepKey, contentId: string, output: any, 
   const t0 = Date.now();
   const prep = await prepare(step, c, s, sop, null);
   const gen = await finalize(step, c, s, output, prep);
-  return settle(step, contentId, row, s, sop, { ...gen, provider: `agent:${String(agent).slice(0, 30)}`, model: undefined, input: { system: prep.system, prompt: prep.prompt }, refs: prep.refs }, t0);
+  // 외부 에이전트도 사용 기록부에 남김. 플랫폼·모델·토큰을 알려 주면 비용까지 계산 (구독 요금제로 돌렸으면 0)
+  const name = String(agent).slice(0, 30);
+  const plat = ['anthropic', 'openai', 'oss'].includes(String(usage?.platform)) ? String(usage!.platform) : 'agent';
+  await logUsage([{
+    kind: 'llm', platform: plat, model: usage?.model || name, effort: usage?.effort || null, ms: null,
+    input_tokens: Number(usage?.input_tokens || 0), output_tokens: Number(usage?.output_tokens || 0),
+    cache_read_tokens: Number(usage?.cache_read_tokens || 0), searches: Number(usage?.searches || 0),
+  }], { contentId, step, task: step, by: `agent:${name}` });
+  return settle(step, contentId, row, s, sop, { ...gen, provider: `agent:${name}`, model: usage?.model ? `${usage.model}${usage.effort ? ' · ' + usage.effort : ''}` : undefined, input: { system: prep.system, prompt: prep.prompt }, refs: prep.refs }, t0);
 }
 
 // ── 결정: 사람 승인/반려 ────────────────────────────────────────────
@@ -458,6 +510,7 @@ export async function aiDecide(step: StepKey, contentId: string, apply = false) 
   await setStep(contentId, step, {
     ai_review: rv.data, checks,
     input_tokens: Number(row.input_tokens) + rv.usage.input, output_tokens: Number(row.output_tokens) + rv.usage.output,
+    cost_usd: await stepCost(contentId, step),
   });
   if (rv.data.verdict === 'pass') {
     await decide(step, contentId, 'approve', rv.data.summary || 'AI 검수 통과', 'ai');

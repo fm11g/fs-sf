@@ -42,7 +42,7 @@ ${(p.comments || []).slice(0, 15).map((c: any) => `- (${c.likes}) ${c.text}`).jo
 
 JSON: { "posts": [{ "id": 0, "attrs": { "topic_category": "", "angle": "", "hook_type": "", "format": "", "target": "", "tone": "한 단어" },
   "comment_analysis": { "sentiment": { "pos": 0.0, "neu": 0.0, "neg": 0.0 }, "themes": [""], "questions": [""], "intent": 0, "requests": [""], "complaints": [""], "quality": 3, "summary": "한 줄" } }] }`,
-    maxTokens: 4000, chain: s.llm_chain, task: 'channels',
+    maxTokens: 4000, chain: s.llm_chain, task: 'channels', meta: { refTable: 'channel_posts', refId: posts.map((p: any) => p.id).join(',').slice(0, 300) },
   });
   return res.data.posts || [];
 }

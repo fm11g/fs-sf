@@ -33,11 +33,9 @@ export async function metrics(days = 30) {
     slugs.length ? db.from('events').select('content_slug, type').in('content_slug', slugs).limit(50000) : Promise.resolve({ data: [] as any[] }),
   ]);
   const rows = steps || [];
-  const pin = Number(process.env.PRICE_IN_PER_MTOK || 3);
-  const pout = Number(process.env.PRICE_OUT_PER_MTOK || 15);
 
   const perStep = STEP_DEFS.map((d) => {
-    const r = rows.filter((x: any) => x.step === d.key && x.attempts > 0);
+    const r = rows.filter((x: any) => x.step === d.key && (x.attempts > 0 || Number(x.cost_usd) > 0));
     const decided = r.filter((x: any) => x.state === 'approved');
     const tin = r.reduce((n: number, x: any) => n + Number(x.input_tokens), 0);
     const tout = r.reduce((n: number, x: any) => n + Number(x.output_tokens), 0);
@@ -51,7 +49,8 @@ export async function metrics(days = 30) {
       waiting: rows.filter((x: any) => x.step === d.key && x.state === 'review').length,
       failed: rows.filter((x: any) => x.step === d.key && x.state === 'failed').length,
       tokens_in: tin, tokens_out: tout,
-      cost_usd: Math.round(((tin * pin + tout * pout) / 1e6) * 100) / 100,
+      // 사용 기록부(usage_log) 기준 실제 누적 비용 — 후보·채점·검수·TTS·렌더·업로드 포함
+      cost_usd: Math.round(r.reduce((n: number, x: any) => n + Number(x.cost_usd || 0), 0) * 1000) / 1000,
     };
   });
 

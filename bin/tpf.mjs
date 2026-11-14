@@ -41,7 +41,7 @@ const HELP = `tpf <명령> [인자] [--옵션]
 
 에이전트 직접 작업 (서버 API 키 없이, 지금 이 에이전트가 산출물을 만든다)
   brief <id> <step> [--feedback "…"] 지시문(system·task·출력 형식) 받기
-  submit <id> <step> <file.json> [--agent codex]   만든 JSON 제출
+  submit <id> <step> <file.json> [--agent codex] [--model claude-opus-5-5 --platform anthropic --in 12000 --out 3000]   만든 JSON 제출 (사용량은 선택)
   set-output <id> <step> <file.json> 산출물 직접 교체
 
 평가 · SOP 학습 (점수 → 생성 최적화 · SOP 보완)
@@ -133,7 +133,7 @@ async function main() {
     case 'render': return out(await call('render_request', { content_id: await id(a1) }));
     case 'publish': return out(await call('publish_request', { content_id: await id(a1), ...(flags.targets ? { targets: String(flags.targets).split(',') } : {}) }));
     case 'brief': return out(await call('step_brief', { content_id: await id(a1), step: need(a2, 'step'), ...(flags.feedback ? { feedback: flags.feedback } : {}) }));
-    case 'submit': return out(await call('step_submit', { content_id: await id(a1), step: need(a2, 'step'), output: readJson(a3), agent: flags.agent || process.env.TPF_AGENT || 'agent' }));
+    case 'submit': return out(await call('step_submit', { content_id: await id(a1), step: need(a2, 'step'), output: readJson(a3), agent: flags.agent || process.env.TPF_AGENT || 'agent', ...(flags.model || flags.in ? { usage: { model: flags.model, platform: flags.platform, effort: flags.effort, input_tokens: Number(flags.in || 0), output_tokens: Number(flags.out || 0) } } : {}) }));
     case 'set-output': return out(await call('step_update_output', { content_id: await id(a1), step: need(a2, 'step'), output: readJson(a3) }));
     case 'good':
     case 'bad': {

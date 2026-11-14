@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import UsagePanel from '../UsagePanel';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { DIMENSIONS, DIM_KEYS, EDITORIAL_RULES } from '@/lib/editorial-taxonomy';
@@ -30,6 +31,7 @@ export default function Editorial() {
       </div>
       <p className="mute">채널 최종 점수가 높았던 형태를 살리되, 반복하지 않도록 새로움을 섞어 7일 순서를 정합니다. 매일 새 콘텐츠가 오늘 슬롯을 받아 조사·기획에 반영됩니다. 슬롯을 고치거나 고정할 수 있습니다.</p>
 
+      {d.plan?.id && <UsagePanel query={`ref_table=editorial_plans&ref_id=${d.plan.id}`} title="이 편성표 만들 때 API 사용" compact />}
       {d.plan?.series_note && <div className="card"><b>이번 주 흐름</b><p style={{ margin: '6px 0 0' }}>{d.plan.series_note}</p></div>}
       {d.plan?.warnings?.length > 0 && <div className="card" style={{ borderColor: '#f0d36b' }}>{d.plan.warnings.map((w: string, i: number) => <p key={i} className="mute" style={{ margin: '3px 0' }}>⚠ {w}</p>)}</div>}
 

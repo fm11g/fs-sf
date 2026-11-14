@@ -1,3 +1,4 @@
+import { linkUsage } from './usage';
 import { ask } from './llm';
 import { getSop, saveSop, sopHash } from './sop';
 import { getOutput, getSettings } from './settings';
@@ -47,7 +48,7 @@ export async function rateOutput(step: StepKey, contentId: string, o: { score: n
   const base = {
     score, kind: kindOf(score), tags, note: o.note || null, topic: c.topic, source: o.source || 'human',
     features: features(step, output, { c, row }), input: row.ai_input || null, sop_hash: row.sop_hash || null,
-    provider: row.provider || null, model: row.model || null, updated_at: new Date().toISOString(),
+    provider: row.provider || null, model: row.model || null, effort: row.effort || null, updated_at: new Date().toISOString(),
   };
   // 같은 산출물에 대한 기존 평가(사람 수정 예 제외) → 갱신
   const { data: prev } = await db.from('exemplars').select('id, output, github_path, used_in').eq('content_id', contentId).eq('step', step).neq('kind', 'edit').neq('source', 'performance').order('id', { ascending: false }).limit(5);
@@ -75,7 +76,7 @@ export async function recordPerformanceRating(step: StepKey, contentId: string, 
   const sc = Math.min(5, Math.max(1, Math.round(score)));
   const base = {
     score: sc, kind: kindOf(sc), tags, note, topic: c.topic, source: 'performance', features: features(step, output, { c, row }),
-    input: row.ai_input || null, sop_hash: row.sop_hash || null, provider: row.provider || null, model: row.model || null, updated_at: new Date().toISOString(),
+    input: row.ai_input || null, sop_hash: row.sop_hash || null, provider: row.provider || null, model: row.model || null, effort: row.effort || null, updated_at: new Date().toISOString(),
   };
   const { data: prev } = await db.from('exemplars').select('id, score, tags, github_path').eq('content_id', contentId).eq('step', step).eq('source', 'performance').maybeSingle();
   if (prev) {
@@ -102,7 +103,7 @@ export async function recordEditExemplar(step: StepKey, contentId: string, aiOut
   if (output == null || same(output, aiOutput)) return false;
   const { data } = await sbAdmin().from('exemplars').insert({
     content_id: contentId, step, kind: 'edit', note: note || '사람이 고친 뒤 승인', output, before: aiOutput, topic: c.topic, source: 'edit',
-    features: features(step, output, { c, row }), input: row.ai_input || null, sop_hash: row.sop_hash || null, provider: row.provider || null, model: row.model || null,
+    features: features(step, output, { c, row }), input: row.ai_input || null, sop_hash: row.sop_hash || null, provider: row.provider || null, model: row.model || null, effort: row.effort || null,
   }).select('id').single();
   if (data) await exportNow(() => exportRating(data.id));
   return true;
@@ -158,7 +159,7 @@ export async function fewShotBlock(step: StepKey, contentId: string, s: any) {
 }
 
 /** 후보 여러 개 → 운영자 채점 기준(고득점·저득점 예시)으로 점수 예측 → 최고 선택 */
-export async function judgeCandidates(step: StepKey, outputs: any[], s: any, sopContent: string) {
+export async function judgeCandidates(step: StepKey, outputs: any[], s: any, sopContent: string, meta: { contentId?: string; step?: string } = {}) {
   const db = sbAdmin();
   const { data: cal } = await db.from('exemplars').select('score, tags, note').eq('step', step).not('score', 'is', null).not('note', 'is', null).order('created_at', { ascending: false }).limit(12);
   const res = await ask<any>({
@@ -173,7 +174,7 @@ ${(cal || []).map((e: any) => `- ★${e.score}${e.tags?.length ? ` [${e.tags.joi
     prompt: `${outputs.map((o, i) => `## 후보 ${i}\n${clip(o, 3500)}`).join('\n\n')}
 
 JSON: { "scores": [{ "i": 0, "score": 4.2, "reason": "한 줄" }], "best": 0 }`,
-    maxTokens: 1500, chain: s.llm_chain, task: 'judge',
+    maxTokens: 1500, chain: s.llm_chain, task: 'judge', meta: { step, ...meta },
   });
   const scores: { i: number; score: number; reason?: string }[] = (res.data.scores || []).filter((x: any) => Number.isInteger(x.i) && x.i >= 0 && x.i < outputs.length);
   const best = scores.length ? scores.reduce((a, b) => (b.score > a.score ? b : a)).i : 0;
@@ -238,7 +239,7 @@ export async function proposeSop(step: StepKey, opts: { force?: boolean } = {}) 
   const examples = [...signal, ...low];
 
   const [sop, sum] = await Promise.all([getSop(step), learningSummary(step)]);
-  const res = await ask<any>({ ...patchPrompt(step, sop.content, sum.md, examples, s.banned_phrases || []), maxTokens: 4000, chain: s.llm_chain, task: 'learn' });
+  const res = await ask<any>({ ...patchPrompt(step, sop.content, sum.md, examples, s.banned_phrases || []), maxTokens: 4000, chain: s.llm_chain, task: 'learn', meta: { step, refTable: 'sops', refId: step } });
   const changes = sanitizeChanges(res.data.changes, s.banned_phrases || []);
   if (opts.force && pend?.length) await db.from('sop_proposals').update({ status: 'superseded', decided_at: new Date().toISOString() }).eq('step', step).eq('status', 'pending');
   const { data: row, error } = await db.from('sop_proposals').insert({
@@ -247,6 +248,7 @@ export async function proposeSop(step: StepKey, opts: { force?: boolean } = {}) 
     stats: { avg: sum.data.avg, rated: sum.data.counts.rated, lift: sum.data.lift.slice(0, 6), sop_trend: sum.data.sopTrend.slice(-4) },
   }).select().single();
   if (error) throw new Error(error.message);
+  await linkUsage(res.usage_ids, 'sop_proposals', row.id);
   await db.from('exemplars').update({ used_in: row.id }).in('id', examples.map((e: any) => e.id));
 
   if (s.learn_mode === 'auto' && changes.length) {
@@ -296,7 +298,7 @@ JSON 스키마:
   "content": "정리된 SOP md 전문",
   "changelog": [{ "type": "merge | add | modify | remove | reorder | keep", "detail": "무엇을 왜 (근거 포함)" }]
 }`,
-    maxTokens: 6000, chain: s.llm_chain, task: 'learn',
+    maxTokens: 6000, chain: s.llm_chain, task: 'learn', meta: { step, refTable: 'sops', refId: step },
   });
   const chk = checkRewrite(sop.content, String(res.data.content || ''), s.banned_phrases || []);
   if (!chk.ok) throw new Error(`재정리안이 안전 검사를 통과하지 못했습니다: ${chk.warns.join(', ')}`);
@@ -308,6 +310,7 @@ JSON 스키마:
     stats: { avg: sum.data.avg, rated: sum.data.counts.rated, lift: sum.data.lift.slice(0, 6), sop_trend: sum.data.sopTrend.slice(-4), applied: sum.data.applied.length },
   }).select().single();
   if (error) throw new Error(error.message);
+  await linkUsage(res.usage_ids, 'sop_proposals', row.id);
   await notify('sop_proposal', { step, extra: { proposal: { ...row, changes: (row.changelog || []).map((c: any) => ({ op: c.type, section: '', text: c.detail })) } } });
   return { proposal: row, warnings: chk.warns };
 }
@@ -404,7 +407,7 @@ export async function proposeFromReferences(step: StepKey, refIds: number[]) {
 - 여러 영상에 공통이거나 반영 강도가 높은 영상의 규칙을 우선합니다. evidence 에는 참고 영상 번호.
 - 형식·구조·리듬·디자인만. 특정 영상의 문장·고유 정보를 그대로 쓰게 하는 규칙 금지. 사실·출처·금지 표현 규칙은 느슨하게 하지 않습니다.`,
     prompt: `## 현재 SOP\n${sop.content}\n\n## 참고 영상 분석\n${list.map(show).join('\n\n')}\n\n금지 표현: ${(s.banned_phrases || []).join(', ')}\n\nJSON: { "summary": "", "patterns": [{ "pattern": "", "evidence": [번호], "in_sop": "already | missing | different" }], "changes": [{ "op": "add | modify | remove", "section": "목적 | 집중 포인트 | 체크리스트 | 금지 | 사람이 결정할 것", "target": "", "text": "", "reason": "", "evidence": [번호] }] }`,
-    maxTokens: 4000, chain: s.llm_chain, task: 'learn',
+    maxTokens: 4000, chain: s.llm_chain, task: 'learn', meta: { step, refTable: 'sops', refId: step },
   });
   const changes = sanitizeChanges(res.data.changes, s.banned_phrases || []);
   await db.from('sop_proposals').update({ status: 'superseded', decided_at: new Date().toISOString() }).eq('step', step).eq('status', 'pending');
@@ -414,6 +417,7 @@ export async function proposeFromReferences(step: StepKey, refIds: number[]) {
     exemplar_ids: [], provider: `${res.provider}/${res.model}`, stats: { source: 'reference', refs: list.map((r: any) => r.id) },
   }).select().single();
   if (error) throw new Error(error.message);
+  await linkUsage(res.usage_ids, 'sop_proposals', row.id);
   await notify('sop_proposal', { step, extra: { proposal: row } });
   return { proposal: row };
 }

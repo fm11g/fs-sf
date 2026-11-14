@@ -1,7 +1,16 @@
 import { STATE_KO, STEP_DEFS, stepDef, type StepKey } from './steps';
+import { PLATFORM_LABEL, PROVIDER_PLATFORM, fmtTok, fmtUsd } from './prices';
 
 /** 메일 발송: RESEND_API_KEY 가 있으면 Resend, 없으면 SMTP(SMTP_HOST…, 예: Gmail 앱 비밀번호) */
-export async function sendMail(m: { to: string[]; subject: string; html: string; text: string }) {
+export async function sendMail(m: { to: string[]; subject: string; html: string; text: string; contentId?: string | null; step?: string | null }) {
+  const via = await sendMailRaw(m);
+  // 사용 기록부: 메일 1통 = 받는 사람 수
+  const { logUsage } = await import('./usage');
+  await logUsage([{ kind: 'email', platform: 'email', model: via, price_key: 'send', units: m.to.length, unit: '통' }], { contentId: m.contentId, step: m.step, task: 'notify' }).catch(() => {});
+  return via;
+}
+
+async function sendMailRaw(m: { to: string[]; subject: string; html: string; text: string }) {
   const from = process.env.EMAIL_FROM || process.env.SMTP_USER || '';
   if (!m.to.length) throw new Error('받는 사람이 없습니다');
   if (process.env.RESEND_API_KEY) {
@@ -160,7 +169,7 @@ export function stepEmail(event: string, c: any, stepStates: Record<string, any>
     h2(`이번에 끝난 일 · ${d.no} ${d.label}`),
     message ? p(`<span style="color:${C.bad}">${esc(message)}</span>`) : '',
     kv(summarize(step, output, c)),
-    row.provider ? p(`<span style="color:${C.mute};font-size:12px">작성: ${esc(row.provider)}${row.model ? ' / ' + esc(row.model) : ''} · 시도 ${row.attempts ?? 1}회${row.work_ms ? ` · ${Math.round(Number(row.work_ms) / 1000)}초` : ''}</span>`) : '',
+    row.provider || Number(row.cost_usd) > 0 ? p(`<span style="color:${C.mute};font-size:12px">${row.provider ? `AI: ${esc(PLATFORM_LABEL[PROVIDER_PLATFORM[row.provider]] || row.provider)}${row.model ? ' / ' + esc(row.model) : ''} · ` : ''}토큰 입력 ${fmtTok(Number(row.input_tokens || 0))} · 출력 ${fmtTok(Number(row.output_tokens || 0))} · API 비용 ${fmtUsd(Number(row.cost_usd || 0))} · 시도 ${row.attempts ?? 1}회${row.work_ms ? ` · ${Math.round(Number(row.work_ms) / 1000)}초` : ''}</span>`) : '',
     row.checks?.length ? h2('규칙 검사') + checksHtml(row.checks) : '',
     row.ai_review ? h2(`AI 검수 · ${row.ai_review.verdict === 'pass' ? '통과' : '수정 필요'} ${row.ai_review.score ?? ''}점`) + p(esc(row.ai_review.summary || '')) : '',
     row.ai_notes?.opinion ? h2('AI 의견') + p(esc(row.ai_notes.opinion)) + (row.ai_notes.questions?.length ? kv([['질문', row.ai_notes.questions]]) : '') : '',

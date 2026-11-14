@@ -11,10 +11,10 @@ export const BLOCKS: Block[] = [
   { key: 'board', label: '현황판', group: '화면', href: '/admin', desc: '보기: 콘텐츠 목록·진행 상황 · 작업: 새 숏폼 만들기·자동 진행' },
   { key: 'editorial', label: '편성표', group: '화면', href: '/admin/editorial', desc: '보기: 주간 편성 · 작업: 편성 다시 짜기·슬롯 수정' },
   { key: 'channels', label: '채널 성과', group: '화면', href: '/admin/channels', desc: '보기: 조회·공유·댓글 점수 · 작업: 다시 분석' },
-  { key: 'metrics', label: '작업 효율', group: '화면', href: '/admin/metrics', desc: '단계별 시간·재작업률·비용' },
+  { key: 'metrics', label: '작업 효율', group: '화면', href: '/admin/metrics', desc: '단계별 시간·재작업률 + API 사용량(플랫폼·모델·토큰·비용) · 이 권한이 없으면 작업대에서도 비용은 숨김' },
   { key: 'references', label: '참고 영상', group: '화면', href: '/admin/references', desc: '보기: 분석 결과 · 작업: 영상 추가·학습 설정·이 영상처럼 만들기' },
   { key: 'sop', label: 'SOP · AI 제어', group: '화면', href: '/admin/sop', desc: '보기: SOP 읽기 · 작업: SOP 수정·학습 반영' },
-  { key: 'landing_tpl', label: '랜딩 템플릿', group: '화면', href: '/admin/landing', desc: '보기/작업: 랜딩 HTML 템플릿' },
+  { key: 'landing_tpl', label: '랜딩 템플릿', group: '화면', href: '/admin/landing', desc: '보기/작업: 랜딩 HTML 템플릿 + 실제 사례(후기) 목록' },
   { key: 'leads', label: '신청 내역', group: '화면', href: '/admin/leads', desc: '개인정보가 포함됩니다' },
   ...STEP_DEFS.map((d) => ({ key: `step:${d.key}`, label: `${d.no} ${d.label}`, group: '공정 단계' as const, desc: `보기: ${d.out} 읽기 · 작업: 실행·수정·승인/반려·평가` })),
   { key: 'editor', label: '영상 편집기', group: '공정 단계', desc: '색·멘트·폰트·위치·영상 크기 편집 (작업 권한만 의미 있음)', workOnly: true },
@@ -56,6 +56,8 @@ export function cleanPerms(p: any): Perms {
 export function pathBlock(path: string): string | null {
   if (path === '/admin' || path.startsWith('/admin/contents')) return 'board';
   if (path.startsWith('/admin/settings') || path.startsWith('/admin/models')) return 'settings';
+  if (path.startsWith('/admin/usage')) return 'metrics';
+  if (path.startsWith('/admin/cases')) return 'landing_tpl';
   if (path.startsWith('/admin/keys')) return 'keys';
   if (path.startsWith('/admin/members')) return 'members';
   const b = BLOCKS.find((x) => x.href && x.href !== '/admin' && path.startsWith(x.href));

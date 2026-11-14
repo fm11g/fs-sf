@@ -13,6 +13,8 @@ const NAV: { href: string; label: string; block: string; ext?: boolean }[] = [
   { href: '/admin/metrics', label: '작업 효율', block: 'metrics' },
   { href: '/admin/sop', label: 'SOP · AI 제어', block: 'sop' },
   { href: '/admin/models', label: 'AI 모델', block: 'settings' },
+  { href: '/admin/usage', label: 'API 사용량', block: 'metrics' },
+  { href: '/admin/cases', label: '실제 사례', block: 'landing_tpl' },
   { href: '/admin/landing', label: '랜딩 템플릿', block: 'landing_tpl' },
   { href: '/admin/leads', label: '신청 내역', block: 'leads' },
   { href: '/admin/settings', label: '설정 · BGM', block: 'settings' },

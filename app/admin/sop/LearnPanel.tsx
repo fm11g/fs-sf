@@ -1,5 +1,6 @@
 'use client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import UsagePanel from '../UsagePanel';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { applyChanges, lineDiff, type SopChange } from '@/lib/sop-merge';
@@ -99,6 +100,7 @@ export default function LearnPanel({ step, current, mode, onChanged }: { step: s
         <div className="card" style={{ borderColor: '#c4b5fd' }}>
           <h2>검토 대기 #{pending.id} · {pending.kind === 'rewrite' ? '전체 재정리안' : '보완 제안'} <span className="mute">{new Date(pending.created_at).toLocaleString('ko-KR')} · {pending.provider}</span></h2>
           <p>{pending.summary}</p>
+          <UsagePanel query={`ref_table=sop_proposals&ref_id=${pending.id}`} title="이 제안 만들 때 API 사용" compact />
           {pending.stats && <p className="mute">제안 당시: 평가 {pending.stats.rated}건 · 평균 ★{pending.stats.avg ?? '-'}{pending.stats.applied != null ? ` · 반영된 학습 ${pending.stats.applied}회` : ''}</p>}
           {baseChanged && <p className="warnline">이 제안을 만든 뒤 SOP 가 바뀌었습니다. {pending.kind === 'rewrite' ? '다시 정리하거나 아래에서 강제 반영을 선택하세요.' : '충돌 표시된 변경은 건너뜁니다.'}</p>}
 

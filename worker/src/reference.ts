@@ -1,3 +1,4 @@
+import { logUsage } from './usage.js';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { execFile } from 'node:child_process';
@@ -189,7 +190,12 @@ export async function analyzeReference(refId: number) {
       if (!lines.length) {
         const audio = path.join(dir, 'a.mp3');
         await sh('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-i', video, '-vn', '-ac', '1', '-ar', '16000', '-b:a', '48k', '-y', audio]).catch(() => null);
+        const ts = Date.now();
         const tr = await transcribe(audio).catch(() => null);
+        if (tr) {
+          // 음성 인식 사용량 (분 단위)
+          await logUsage([{ kind: 'stt', platform: tr.via === 'openai' ? 'openai' : 'fish', model: tr.via === 'openai' ? 'whisper-1' : 'asr', price_key: tr.via === 'openai' ? 'whisper-1' : 'asr', units: Number(meta.duration || 0) / 60, unit: '분', ms: Date.now() - ts }], { task: 'reference', refTable: 'ref_videos', refId: String(refId) });
+        }
         if (tr) { lines = tr.lines; via = tr.via; } else warn.push('대사 추출 실패 (자막 없음 · OpenAI/Fish 음성 인식 키 없음)');
       }
     } else {

@@ -1,3 +1,4 @@
+import { YT_QUOTA, counter, logUsage } from './usage.js';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import os from 'node:os';
@@ -15,6 +16,8 @@ async function download(url: string) {
   return file;
 }
 
+const calls = counter();
+
 async function youtube(c: any) {
   const auth = new google.auth.OAuth2(env('YT_CLIENT_ID'), env('YT_CLIENT_SECRET'));
   auth.setCredentials({ refresh_token: env('YT_REFRESH_TOKEN') });
@@ -24,6 +27,7 @@ async function youtube(c: any) {
   let title = clean(y.title, 100);
   if (!/#shorts/i.test(title) && title.length < 92) title += ' #shorts';
 
+  calls.add('yt:videos.insert');
   const res = await yt.videos.insert({
     part: ['snippet', 'status'],
     requestBody: {
@@ -35,6 +39,7 @@ async function youtube(c: any) {
   const videoId = res.data.id!;
   // 카피 + 랜딩 링크 댓글 (API로는 '고정'이 불가 → 스튜디오에서 1회 고정 클릭 필요)
   if (y.comment) {
+    calls.add('yt:commentThreads.insert');
     await yt.commentThreads.insert({
       part: ['snippet'],
       requestBody: { snippet: { videoId, topLevelComment: { snippet: { textOriginal: y.comment } } } },
@@ -48,6 +53,7 @@ async function instagram(c: any) {
   const user = env('IG_USER_ID');
   const token = env('IG_ACCESS_TOKEN');
   const post = async (p: string, params: Record<string, string>) => {
+    calls.add('ig');
     const r = await fetch(`${G}/${p}`, { method: 'POST', body: new URLSearchParams({ ...params, access_token: token }) });
     const j: any = await r.json();
     if (!r.ok || j.error) throw new Error(`IG ${p}: ${j.error?.message || r.status}`);
@@ -61,6 +67,7 @@ async function instagram(c: any) {
   // 인코딩 대기 (최대 ~6분)
   for (let i = 0; i < 72; i++) {
     await new Promise((r) => setTimeout(r, 5000));
+    calls.add('ig');
     const s: any = await (await fetch(`${G}/${container.id}?fields=status_code,status&access_token=${token}`)).json();
     if (s.status_code === 'FINISHED') break;
     if (s.status_code === 'ERROR' || s.status_code === 'EXPIRED') throw new Error(`IG 인코딩 실패: ${s.status}`);
@@ -92,6 +99,13 @@ export async function publish(contentId: string, targets: string[] = ['youtube',
     catch (e: any) { errors.push(`Instagram: ${e.message}`); await log(contentId, 'instagram', 'failed', e.message); }
   }
 
+  // 업로드 API 사용량 (유튜브 = 쿼터 단위, 인스타 = 호출 수)
+  const n = calls.get();
+  const quota = Object.entries(n).filter(([k]) => k.startsWith('yt:')).reduce((q, [k, v]) => q + (YT_QUOTA[k.slice(3)] || 1) * v, 0);
+  await logUsage([
+    ...(quota ? [{ kind: 'upload', platform: 'youtube', model: 'data-api-v3', price_key: 'api', units: quota, unit: '쿼터', ok: !errors.some((e) => e.startsWith('YouTube')) }] : []),
+    ...(n.ig ? [{ kind: 'upload', platform: 'instagram', model: 'graph-api', price_key: 'api', units: n.ig, unit: '호출', ok: !errors.some((e) => e.startsWith('Instagram')) }] : []),
+  ], { contentId, step: 'publish', task: 'publish' });
   const anyOk = patch.youtube_id || patch.instagram_id || c.youtube_id || c.instagram_id;
   if (anyOk) {
     patch.status = 'published';

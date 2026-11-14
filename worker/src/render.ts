@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { bundle } from '@remotion/bundler';
 import { renderMedia, renderStill, selectComposition } from '@remotion/renderer';
 import { db, gateOf, getStep, log, notifySite, setStep, settings, syncCurrent, uploadPublic } from './env.js';
+import { logUsage } from './usage.js';
 import { tts } from './tts.js';
 import { buildProps, narrationOf } from '../video/props.js';
 
@@ -25,14 +26,18 @@ export async function render(contentId: string) {
   // 1) AI 목소리: 장면별 TTS → 실제 길이로 타이밍 확정
   await log(contentId, 'voice', 'running');
   const audio: any[] = [];
+  const ttsRows: any[] = [];
   for (const sc of c.script.scenes) {
     // 영상 편집기에서 바꾼 내레이션이 있으면 그 문장으로 읽음
     const g = (c.design?.scenes || []).find((x: any) => x.id === sc.id);
     const text = narrationOf(sc, g);
+    const tt = Date.now();
     const { buf, duration } = await tts(text, s);
+    ttsRows.push({ kind: 'tts', platform: 'fish', model: s.tts_model || 's1', price_key: 'tts', units: text.length, unit: '글자', ms: Date.now() - tt });
     const url = await uploadPublic(`contents/${c.slug}/voice-${sc.id}.mp3`, buf, 'audio/mpeg');
     audio.push({ id: sc.id, url, duration: Number((duration + PAD).toFixed(2)), text }); // text: 편집기에서 대사가 바뀌었는지 판단용
   }
+  await logUsage(ttsRows, { contentId, step: 'render', task: 'tts' });
   await log(contentId, 'voice', 'done', `총 ${audio.reduce((n, a) => n + a.duration, 0).toFixed(1)}초`);
 
   // 2) BGM 선택
@@ -84,12 +89,16 @@ export async function render(contentId: string) {
       : { level: 'ok', msg: `영상 길이 ${totalSec.toFixed(1)}초` },
     bgmUrl ? { level: 'ok', msg: 'BGM 적용' } : { level: 'warn', msg: 'BGM 없음 (설정에서 음원 업로드)' },
   ];
+  // 렌더 서버 사용 시간 (GitHub Actions 분 단위 과금 기준)
+  await logUsage([{ kind: 'render', platform: process.env.GITHUB_ACTIONS ? 'github' : 'local', model: 'remotion', price_key: 'actions', units: (Date.now() - t0) / 60000, unit: '분', ms: Date.now() - t0 }], { contentId, step: 'render', task: 'render' });
+  const { data: costRows } = await db.from('usage_log').select('cost_usd').eq('content_id', contentId).eq('step', 'render');
+  const renderCost = (costRows || []).reduce((n: number, r: any) => n + Number(r.cost_usd || 0), 0);
   const gate = await gateOf('render');
   const pass = gate !== 'manual' && !checks.some((k) => k.level === 'error');
   const t = new Date().toISOString();
   await setStep(contentId, 'render', {
     state: pass ? 'approved' : 'review', decided_by: pass ? (gate === 'ai' ? 'ai' : 'auto') : null, decided_at: pass ? t : null,
-    checks, finished_at: t, work_ms: Number(prev.work_ms || 0) + (Date.now() - t0),
+    checks, finished_at: t, work_ms: Number(prev.work_ms || 0) + (Date.now() - t0), cost_usd: Math.round(renderCost * 1e6) / 1e6,
   });
   await syncCurrent(contentId);
   await log(contentId, 'render', 'done', `${totalSec.toFixed(1)}초 영상 · ${pass ? '자동 승인' : '검수 대기'}`);

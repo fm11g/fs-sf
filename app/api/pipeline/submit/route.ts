@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
 export async function POST(req: NextRequest) {
   const deny = await requireAdmin(req);
   if (deny) return deny;
-  const { contentId, step, output, agent } = await req.json();
-  try { return NextResponse.json(await stepSubmit(step, contentId, output, agent)); }
+  const { contentId, step, output, agent, usage } = await req.json();
+  try { return NextResponse.json(await stepSubmit(step, contentId, output, agent, usage)); }
   catch (e: any) { return NextResponse.json({ error: e.message }, { status: 400 }); }
 }

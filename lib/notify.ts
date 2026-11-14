@@ -40,7 +40,7 @@ export async function notify(event: NotifyEvent, o: { contentId?: string; step?:
     }
 
     try {
-      await sendMail({ to, ...mail });
+      await sendMail({ to, ...mail, contentId: o.contentId || null, step: o.step || null });
       await record({ content_id: o.contentId || null, step: o.step || null, event, recipients: to, subject: mail.subject, status: 'sent' });
       return { status: 'sent', subject: mail.subject };
     } catch (e: any) {

@@ -3,7 +3,7 @@
 > 빠른 길: `setup/README.md` (SQL 한 번 · Vercel 3개 · GitHub 2개 · 첫 가입)
 
 ## 1. Supabase
-1. 새 프로젝트 → SQL Editor에서 `setup/supabase-all-in-one.sql` 한 번 실행 (= migrations 001~008)
+1. 새 프로젝트 → SQL Editor에서 `setup/supabase-all-in-one.sql` 한 번 실행 (= migrations 001~010)
 2. Settings → API에서 `URL`, `anon key`, `service_role key` 복사
 3. 관리자 계정은 SQL 로 넣지 않습니다 — 배포 후 첫 접속 때 **대표 계정 만들기** 화면에서 생성
 

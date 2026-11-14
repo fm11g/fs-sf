@@ -76,7 +76,7 @@ export default function Metrics() {
             ))}
           </tbody>
         </table>
-        <p className="mute">비용은 토큰 × 단가(환경변수 PRICE_IN_PER_MTOK / PRICE_OUT_PER_MTOK, 기본 3 / 15 USD) 추정치이며 웹검색·TTS 비용은 포함하지 않습니다.</p>
+        <p className="mute">비용은 API 사용 기록(모델별 단가 · 웹검색 · AI 목소리 · 렌더 · 업로드 포함) 기준 추정치입니다. 플랫폼·모델·작업별 자세한 내역은 <a href="/admin/usage">API 사용량</a>에서 봅니다.</p>
       </div>
       <div className="card">
         <h2>결과물 점수 <span className="mute">내가 매긴 1~5점 (전체 기간) — 점수 추이는 SOP·AI 제어의 단계별 "SOP 버전별 평균"</span></h2>

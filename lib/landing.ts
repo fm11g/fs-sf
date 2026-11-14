@@ -5,6 +5,17 @@ export type Slot = { key: string; label: string; max: number | null; attr: strin
 /** 글자수: 공백 포함, 줄바꿈(\n) 제외 */
 export const charLen = (v: string) => [...v.replace(/\n/g, '')].length;
 
+/** 슬롯 HTML → 화면에 보이는 글자 (<br> = \n) */
+export function htmlToText(html: string) {
+  return html
+    .replace(/\s+/g, ' ')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+    .split('\n').map((x) => x.trim()).join('\n')
+    .trim();
+}
+
 /**
  * 템플릿 규칙
  *   <h1 data-slot="hero_title" data-max="18" data-label="메인 헤드라인">기존 문구</h1>
@@ -13,10 +24,16 @@ export const charLen = (v: string) => [...v.replace(/\n/g, '')].length;
 export function parseSlots(html: string): Slot[] {
   const $ = cheerio.load(html);
   const out: Slot[] = [];
+  const seen = new Set<string>();
   $('[data-slot]').each((_, el) => {
     const $el = $(el);
+    // 같은 키가 여러 곳에 있으면(og:title·twitter:title, 무한 슬라이더 복제 카드) 한 슬롯으로 — 채울 때는 모두 바뀜
+    const k = $el.attr('data-slot')!;
+    if (seen.has(k)) return;
+    seen.add(k);
     const attr = $el.attr('data-slot-attr') || null;
-    const current = attr ? $el.attr(attr) || '' : $el.html()?.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim() || '';
+    // 화면에 보이는 대로: 소스 코드의 줄바꿈·들여쓰기는 공백 하나로, <br> 만 줄바꿈으로
+    const current = attr ? $el.attr(attr) || '' : htmlToText($el.html() || '');
     out.push({
       key: $el.attr('data-slot')!,
       label: $el.attr('data-label') || $el.attr('data-slot')!,

@@ -36,7 +36,7 @@ export const paths = {
 };
 
 const SHEET = {
-  outputs: ['기록시각', '콘텐츠ID', '슬러그', '주제', '단계', '시도', '상태', '결정', '제공자', '모델', 'SOP버전', '자유도', '후보수', 'AI예측점수', '오류수', '경고수', '작업초', '입력토큰', '출력토큰', '요약', 'GitHub경로', '산출물JSON', ...FEATURE_COLUMNS],
+  outputs: ['기록시각', '콘텐츠ID', '슬러그', '주제', '단계', '시도', '상태', '결정', '제공자', '모델', 'SOP버전', '자유도', '후보수', 'AI예측점수', '오류수', '경고수', '작업초', '입력토큰', '출력토큰', '요약', 'GitHub경로', '산출물JSON', ...FEATURE_COLUMNS, '플랫폼/모델', '생각깊이', 'API비용USD', 'API호출수'],
   ratings: ['기록시각', '평가ID', '콘텐츠ID', '슬러그', '주제', '단계', '점수', '등급', '종류', '내태그', '메모', '제공자', '모델', 'SOP버전', '사람수정', 'GitHub경로', ...FEATURE_COLUMNS],
   sop_changes: ['기록시각', '제안ID', '단계', '종류', '상태', '결정', '요약', '변경수', '반영수', '변경내용', 'GitHub경로'],
   channel_posts: ['기준일', '플랫폼', '링크', '제목', '게시일', '경과일', '조회', '좋아요', '댓글', '공유', '저장', '시청유지', '최종점수', '성숙도', '주제분류', '각도', '훅', '구성', '대상', '댓글요약', '시청자요청', '신청의향', '공장콘텐츠ID'],
@@ -68,13 +68,22 @@ export async function exportRun(contentId: string, step: StepKey, error?: string
     : { video_url: c.video_url, thumbnail_url: c.thumbnail_url, audio: c.audio, youtube_id: c.youtube_id, instagram_id: c.instagram_id, published_at: c.published_at };
   const feat = features(step, output, { c, row });
   const path = paths.run(c, step, row.attempts);
+  // 이 단계의 API 사용 내역 (어떤 플랫폼·모델·생각 깊이로 얼마나 썼는지)
+  const { data: calls } = await sbAdmin().from('usage_log')
+    .select('at, task, kind, platform, model, effort, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, searches, units, unit, cost_usd, priced, ok, error, ms, attempt')
+    .eq('content_id', contentId).eq('step', step).order('at');
+  const u = calls || [];
+  const platforms = [...new Set(u.map((x: any) => `${x.platform}/${x.model || '-'}`))].join(', ');
   const rec = {
     type: 'run', recorded_at: new Date().toISOString(),
     content: { id: c.id, slug: c.slug, topic: c.topic }, step, no: stepDef(step).no, attempt: row.attempts,
     state: row.state, decided_by: row.decided_by, decision_note: row.decision_note,
     provider: row.provider, model: row.model, sop_hash: row.sop_hash, freedom: row.freedom, candidates: row.candidates, pred_score: row.pred_score, refs: row.refs,
     features: feat, checks: row.checks, ai_review: row.ai_review, ai_notes: row.ai_notes,
-    usage: { input_tokens: row.input_tokens, output_tokens: row.output_tokens, work_ms: row.work_ms, wait_ms: row.wait_ms },
+    usage: {
+      input_tokens: row.input_tokens, output_tokens: row.output_tokens, work_ms: row.work_ms, wait_ms: row.wait_ms,
+      effort: row.effort || null, cost_usd: Number(row.cost_usd || 0), platforms, calls: u,
+    },
     error: error || null, input: row.ai_input || null, output,
   };
   const checks = row.checks || [];
@@ -87,6 +96,7 @@ export async function exportRun(contentId: string, step: StepKey, error?: string
         row.candidates ?? '', row.pred_score ?? '', checks.filter((x: any) => x.level === 'error').length, checks.filter((x: any) => x.level === 'warn').length,
         Math.round(Number(row.work_ms || 0) / 1000), row.input_tokens, row.output_tokens, error ? `오류: ${error}` : flat(summarize(step, output, c)), path, output,
         ...FEATURE_COLUMNS.map((k) => feat[k] ?? ''),
+        platforms, row.effort || '', Number(row.cost_usd || 0), u.length,
       ]],
     },
   });

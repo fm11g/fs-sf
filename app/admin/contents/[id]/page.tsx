@@ -9,6 +9,7 @@ import type { Content, StepRow } from '@/lib/types';
 import { CopyEditor, DesignEditor, JsonEditor, LandingEditor, Readable, ScriptEditor } from './editors';
 import RatingBox from './RatingBox';
 import ModelChip from './ModelChip';
+import UsagePanel from '../../UsagePanel';
 
 const fmtMs = (ms: number) => (ms >= 60000 ? `${Math.round(ms / 6000) / 10}분` : `${Math.round(ms / 1000)}초`);
 
@@ -111,6 +112,8 @@ export default function Workbench({ params }: { params: { id: string } }) {
           {me?.role === 'owner' && <button onClick={() => confirm('이 콘텐츠를 삭제할까요?') && api(`/api/contents/${c.id}`, undefined, 'DELETE').then(() => (location.href = '/admin'))}>삭제</button>}
         </div>
       </div>
+      <UsagePanel query={`content_id=${c.id}`} title="이 숏폼 전체 API 사용" refreshKey={Object.values(steps).map((r: any) => r?.finished_at).join()} />
+      <div style={{ height: 14 }} />
       {c.error && <div className="card bad">{c.error}</div>}
       {c.reference_id && <div className="slotbanner">🎞 참고 영상 #{c.reference_id} 처럼 만드는 콘텐츠 {can(me, 'references') && <Link href={`/admin/references?id=${c.reference_id}`}>분석 보기</Link>}</div>}
       {c.editorial && (
@@ -144,6 +147,7 @@ export default function Workbench({ params }: { params: { id: string } }) {
                 {row.provider && ` · 지난 실행 ${row.provider}${row.model ? '/' + row.model : ''}`}{row.work_ms > 0 && ` · 작업 ${fmtMs(Number(row.work_ms))}`}{row.wait_ms > 0 && ` · 대기 ${fmtMs(Number(row.wait_ms))}`} {can(me, 'sop') && <>· <Link href={`/admin/sop?step=${sel}`}>SOP 수정</Link></>}
               </span>
             </div>
+            <UsagePanel query={`content_id=${c.id}&step=${sel}`} title="이 단계 API 사용" compact refreshKey={`${row.finished_at}|${row.attempts}|${row.ai_review?.score ?? ''}`} />
             {blocked.length > 0 && <p className="warnline">상위 단계 승인이 먼저 필요합니다: {[...new Set(blocked.map((b) => (hiddenDep(b) ? '다른 담당 단계' : stepDef(b).label)))].join(', ')}</p>}
             {!mayWork && <p className="mute">👁 보기 권한 — 실행·수정·결정은 이 단계 작업 권한이 있는 사람이 합니다.</p>}
             {row.state === 'stale' && <p className="warnline">상위 산출물이 바뀌었습니다. 다시 실행하거나, 그대로 써도 되면 승인하세요.</p>}

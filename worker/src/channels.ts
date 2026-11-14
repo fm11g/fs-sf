@@ -1,3 +1,4 @@
+import { YT_QUOTA, counter, logUsage } from './usage.js';
 import crypto from 'node:crypto';
 import { google } from 'googleapis';
 import { db, settings } from './env.js';
@@ -41,6 +42,7 @@ async function youtube(link: string, sinceIso: string, warnings: string[]): Prom
   const rootUrl = process.env.YT_API_ROOT; // 테스트용
   const yt = google.youtube({ version: 'v3', auth, ...(rootUrl ? { rootUrl } : {}) });
   const ref = parseYoutube(link);
+  calls.add('yt:channels.list');
   const ch = await yt.channels.list({ part: ['contentDetails', 'snippet'], ...(ref.id ? { id: [ref.id] } : ref.handle ? { forHandle: ref.handle } : hasOAuth ? { mine: true } : {}) } as any);
   const channel = ch.data.items?.[0];
   if (!channel) { warnings.push(`유튜브: 채널을 찾지 못함 (${link || '링크 없음'})`); return []; }
@@ -51,6 +53,7 @@ async function youtube(link: string, sinceIso: string, warnings: string[]): Prom
   const ids: string[] = [];
   let pageToken: string | undefined;
   outer: for (let i = 0; i < 3; i++) {
+    calls.add('yt:playlistItems.list');
     const pl = await yt.playlistItems.list({ part: ['contentDetails'], playlistId: uploads, maxResults: 50, pageToken });
     for (const it of pl.data.items || []) {
       if ((it.contentDetails?.videoPublishedAt || '') < sinceIso) break outer;
@@ -63,6 +66,7 @@ async function youtube(link: string, sinceIso: string, warnings: string[]): Prom
 
   const vids: any[] = [];
   for (let i = 0; i < ids.length; i += 50) {
+    calls.add('yt:videos.list');
     const v = await yt.videos.list({ part: ['snippet', 'statistics', 'contentDetails'], id: ids.slice(i, i + 50) });
     vids.push(...(v.data.items || []));
   }
@@ -77,6 +81,7 @@ async function youtube(link: string, sinceIso: string, warnings: string[]): Prom
     const end = new Date().toISOString().slice(0, 10);
     for (const metrics of ['views,likes,comments,shares,averageViewPercentage,averageViewDuration,subscribersGained', 'views,likes,comments,shares']) {
       try {
+        calls.add('yt:analytics.query');
         const r = await ya.reports.query({ ids: 'channel==MINE', startDate: start, endDate: end, metrics, dimensions: 'video', filters: `video==${shorts.map((v) => v.id).join(',')}`, sort: '-views', maxResults: 200 });
         const cols = (r.data.columnHeaders || []).map((c: any) => c.name);
         for (const row of r.data.rows || []) extra[row[0]] = Object.fromEntries(cols.map((c: string, i: number) => [c, row[i]]));
@@ -94,6 +99,7 @@ async function youtube(link: string, sinceIso: string, warnings: string[]): Prom
     const comments: Post['comments'] = [];
     if (Number(v.statistics?.commentCount || 0) > 0) {
       try {
+        calls.add('yt:commentThreads.list');
         const c = await yt.commentThreads.list({ part: ['snippet'], videoId: v.id, maxResults: 20, order: 'relevance', textFormat: 'plainText' });
         for (const t of c.data.items || []) { const s = t.snippet?.topLevelComment?.snippet; if (s?.textDisplay) comments.push({ text: clean(s.textDisplay), likes: Number(s.likeCount || 0), at: s.publishedAt || '' }); }
       } catch { /* 댓글 사용 안 함 */ }
@@ -117,6 +123,7 @@ async function instagram(link: string, sinceIso: string, warnings: string[]): Pr
   if (!user || !token) { warnings.push('인스타: IG_USER_ID / IG_ACCESS_TOKEN 이 없어 건너뜀'); return []; }
   const G = process.env.IG_GRAPH_BASE || `https://${process.env.IG_GRAPH_HOST || 'graph.facebook.com'}/${process.env.GRAPH_VERSION || 'v21.0'}`;
   const get = async (path: string, params: Record<string, string> = {}) => {
+    calls.add('ig');
     const u = path.startsWith('http') ? path : `${G}/${path}?${new URLSearchParams({ ...params, access_token: token })}`;
     const r = await fetch(u, { signal: AbortSignal.timeout(30000) });
     const j: any = await r.json();
@@ -160,6 +167,8 @@ async function instagram(link: string, sinceIso: string, warnings: string[]): Pr
   return out;
 }
 
+const calls = counter();
+
 export async function collectChannels() {
   const s = await settings();
   const since = new Date(Date.now() - Number(s.channel_lookback_days || 60) * 864e5).toISOString();
@@ -184,6 +193,13 @@ export async function collectChannels() {
     await db.from('post_snapshots').insert({ post_id: row.id, metrics: p.metrics, age_hours: Math.round((Date.now() - +new Date(row.published_at)) / 36e5) });
     saved++;
   }
+  // 채널 통계 API 사용량 (유튜브 쿼터 · 인스타 호출 수)
+  const n = calls.get();
+  const quota = Object.entries(n).filter(([k]) => k.startsWith('yt:')).reduce((q, [k, v]) => q + (YT_QUOTA[k.slice(3)] || 1) * v, 0);
+  await logUsage([
+    ...(quota ? [{ kind: 'analytics', platform: 'youtube', model: 'data-api-v3', price_key: 'api', units: quota, unit: '쿼터' }] : []),
+    ...(n.ig ? [{ kind: 'analytics', platform: 'instagram', model: 'graph-api', price_key: 'api', units: n.ig, unit: '호출' }] : []),
+  ], { task: 'channels', refTable: 'channel_posts', refId: now.slice(0, 10) });
   console.log(`채널 수집: 유튜브 ${posts.filter((p) => p.platform === 'youtube').length} · 인스타 ${posts.filter((p) => p.platform === 'instagram').length} · 저장 ${saved}`);
   for (const w of warnings) console.warn('⚠', w);
   return { collected: posts.length, saved, warnings };

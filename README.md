@@ -53,7 +53,7 @@ skills/               에이전트 스킬 원본 → .claude/skills · .agents/s
 .claude/agents/       Claude Code 서브에이전트 (producer · reviewer · researcher · sop-editor)
 AGENTS.md, CLAUDE.md  에이전트 공통 지침 (Codex 등 / Claude Code)
 bin/tpf.mjs           공장 CLI — MCP가 없는 에이전트도 같은 명령으로 조작
-landing/template.html 신청 유도형 랜딩 샘플(슬롯 30개 + 신청폼)
+landing/govbizfund-template.html govbizfund.co.kr 실제 페이지에 슬롯만 붙인 템플릿(문구 63 + 후기 카드 8장) · landing/template.html 신청 유도형 랜딩 샘플(슬롯 50개 + 신청폼 · 선택 슬롯은 비우면 자동 숨김)
 worker/               렌더·업로드 워커 (video/Short.tsx = 모션그래픽)
 supabase/migrations/  001 → 002 → 003 → 004 → 005 → 006_channels_editorial.sql 순서로 실행
 docs/                 SETUP · OPERATIONS(운영 SOP) · API-MCP

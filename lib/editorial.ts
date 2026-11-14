@@ -1,3 +1,4 @@
+import { linkUsage } from './usage';
 import { ask } from './llm';
 import { getSettings } from './settings';
 import { sbAdmin } from './supabase/server';
@@ -84,10 +85,12 @@ export async function buildPlan(o: { force?: boolean } = {}) {
   let slots: Slot[] = draft;
   let series_note = '';
   let provider: string | null = null;
+  let usageIds: number[] = [];
   const warnings: string[] = [];
   try {
-    const res = await ask<any>({ ...refinePrompt(s, ins, table, draft, ins.sequence), maxTokens: 3500, chain: s.llm_chain, task: 'editorial' });
+    const res = await ask<any>({ ...refinePrompt(s, ins, table, draft, ins.sequence), maxTokens: 3500, chain: s.llm_chain, task: 'editorial', meta: { refTable: 'editorial', refId: today } });
     provider = `${res.provider}/${res.model}`;
+    usageIds = res.usage_ids;
     const refined: Slot[] = draft.map((d, i) => {
       const r = (res.data.slots || []).find((x: any) => x.date === d.date) || {};
       if (d.locked || d.content_id) return { ...d, title_idea: d.title_idea || r.title_idea, hook_example: d.hook_example || r.hook_example, flow_note: d.flow_note || r.flow_note };
@@ -112,6 +115,7 @@ export async function buildPlan(o: { force?: boolean } = {}) {
     inputs: { overall: ins.overall, scored: ins.scored, requests: ins.requests.slice(0, 6), top: ins.top.slice(0, 3), table: Object.fromEntries(DIM_KEYS.map((k) => [k, table[k].slice(0, 5)])), recent: ins.sequence.slice(0, 7) },
   }).select().single();
   if (error) throw new Error(error.message);
+  await linkUsage(usageIds, 'editorial_plans', plan.id);
   await exportNow(() => exportEditorial(plan));
   return { plan, rebuilt: true };
 }
