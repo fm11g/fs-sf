@@ -30,8 +30,8 @@ export const KEY_DEFS: KeyDef[] = [
   { key: 'TAVILY_API_KEY', label: 'Tavily 검색 키', group: 'AI', secret: true, help: '오픈소스 모델로 조사할 때 웹검색용' },
   { key: 'SEARXNG_URL', label: 'SearXNG 주소', group: 'AI' },
 
-  { key: 'GITHUB_REPO', label: '저장소 (owner/repo)', group: '워커(GitHub)', placeholder: 'flos/today-policy-fund' },
-  { key: 'GITHUB_TOKEN', label: 'GitHub 토큰', group: '워커(GitHub)', secret: true, help: 'Fine-grained · 이 저장소 · Contents·Secrets 읽기/쓰기. 저장 후 [워커에 적용]을 누르면 GitHub Secrets 가 자동 등록됩니다' },
+  { key: 'GITHUB_REPO', label: '저장소 (owner/repo)', group: '워커(GitHub)', placeholder: 'flos/today-policy-fund', help: 'owner/repo 만 (주소나 .git 을 붙여도 저장할 때 자동으로 정리)' },
+  { key: 'GITHUB_TOKEN', label: 'GitHub 토큰', group: '워커(GitHub)', secret: true, help: 'Fine-grained · 이 저장소 · Contents·Secrets·Actions 읽기/쓰기 (Actions 는 렌더 중지용). 저장 후 [워커에 적용] → [연결 확인]으로 점검' },
 
   { key: 'FISH_AUDIO_API_KEY', label: 'Fish Audio API 키', group: 'AI 목소리', secret: true },
 
@@ -62,6 +62,13 @@ export const KEY_DEFS: KeyDef[] = [
 ];
 
 const ALLOWED = new Set(KEY_DEFS.map((k) => k.key));
+const REPO_KEYS = new Set(['GITHUB_REPO', 'GITHUB_DATA_REPO']);
+/** 저장소 값 정리: https://github.com/a/b.git · git@github.com:a/b.git · a/b/ → a/b (GitHub API 는 'owner/repo' 만 받음) */
+export function normRepo(v: string) {
+  return String(v || '').trim()
+    .replace(/^git@github\.com:/i, '').replace(/^https?:\/\/(www\.)?github\.com\//i, '')
+    .replace(/\.git$/i, '').replace(/\/+$/, '').split('/').slice(0, 2).join('/');
+}
 /** 워커(GitHub Actions)가 읽는 키 — 워커도 DB 에서 직접 읽으므로 GitHub Secrets 엔 Supabase 2개만 있으면 됨 */
 export const WORKER_KEYS = ['SITE_URL', 'WORKER_SECRET', 'FISH_AUDIO_API_KEY', 'YT_CLIENT_ID', 'YT_CLIENT_SECRET', 'YT_REFRESH_TOKEN', 'YT_API_KEY', 'IG_USER_ID', 'IG_ACCESS_TOKEN', 'GRAPH_VERSION', 'IG_GRAPH_HOST', 'OPENAI_API_KEY'];
 
@@ -77,7 +84,7 @@ function apply(rows: { key: string; value: string }[]) {
   for (const r of rows) {
     if (!ALLOWED.has(r.key) || !r.value) continue;
     if (!applied.has(r.key)) orig[r.key] = process.env[r.key];
-    process.env[r.key] = r.value;
+    process.env[r.key] = REPO_KEYS.has(r.key) ? normRepo(r.value) : r.value;
     applied.add(r.key);
     seen.add(r.key);
   }
@@ -111,7 +118,8 @@ export async function setSecrets(values: Record<string, string | null>, by: stri
   const del: string[] = [];
   for (const [k, v] of Object.entries(values)) {
     if (!ALLOWED.has(k)) throw new Error(`저장할 수 없는 키: ${k}`);
-    const val = typeof v === 'string' ? v.trim() : '';
+    let val = typeof v === 'string' ? v.trim() : '';
+    if (val && REPO_KEYS.has(k)) val = normRepo(val);
     if (val) up.push({ key: k, value: val, updated_by: by, updated_at: new Date().toISOString() });
     else del.push(k);
   }

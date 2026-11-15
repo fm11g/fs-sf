@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { sbAdmin } from './supabase/server';
+import { normRepo } from './secrets';
 import { STEP_DEFS, stepDef, type StepKey } from './steps';
 
 export type Sop = { step: StepKey; content: string; freedom: number; gate: 'manual' | 'ai' | 'auto'; provider?: string; best_of?: number; updated_at?: string; isDefault?: boolean };
@@ -51,7 +52,7 @@ export async function saveSop(step: StepKey, patch: Partial<Pick<Sop, 'content' 
 
 /** 관리자에서 고친 SOP를 저장소 sop/*.md 에 커밋 (GITHUB_TOKEN: Contents Read/Write) */
 export async function commitSopToGithub(step: StepKey, content: string) {
-  const repo = process.env.GITHUB_REPO;
+  const repo = normRepo(process.env.GITHUB_REPO || '');
   const token = process.env.GITHUB_TOKEN;
   if (!repo || !token) throw new Error('GITHUB_REPO / GITHUB_TOKEN 환경변수가 없습니다');
   const url = `https://api.github.com/repos/${repo}/contents/${sopFile(step)}`;

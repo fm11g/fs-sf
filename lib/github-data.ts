@@ -3,11 +3,13 @@
  * 기본: 같은 저장소(GITHUB_REPO)의 'data' 브랜치 (코드 브랜치와 분리 → 배포·CI에 영향 없음)
  * content: null 이면 해당 경로 삭제 (평가 점수가 바뀌어 등급 폴더를 옮길 때)
  */
+import { normRepo } from './secrets';
+
 export type DataFile = { path: string; content: string | null };
 
 export function dataRepoConfig(s: any = {}) {
   return {
-    repo: s.github_data_repo || process.env.GITHUB_DATA_REPO || process.env.GITHUB_REPO || '',
+    repo: normRepo(s.github_data_repo || process.env.GITHUB_DATA_REPO || process.env.GITHUB_REPO || ''),
     branch: s.github_data_branch || 'data',
     token: process.env.GITHUB_DATA_TOKEN || process.env.GITHUB_TOKEN || '',
     api: (process.env.GITHUB_API_URL || 'https://api.github.com').replace(/\/$/, ''),

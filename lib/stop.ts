@@ -1,5 +1,5 @@
 import { sbAdmin } from './supabase/server';
-import { hydrateEnv } from './secrets';
+import { hydrateEnv, normRepo } from './secrets';
 import { limitsOf, type Limits } from './limits';
 import type { RenderProgress } from '@/worker/video/stages';
 
@@ -55,7 +55,7 @@ export async function stopStep(contentId: string, step: string, by: string, reas
 // ── 렌더 ──
 async function gh(path: string, init?: RequestInit) {
   await hydrateEnv();
-  const repo = process.env.GITHUB_REPO, token = process.env.GITHUB_TOKEN;
+  const repo = normRepo(process.env.GITHUB_REPO || ''), token = process.env.GITHUB_TOKEN;
   if (!repo || !token) throw new Error('GitHub 토큰 없음');
   const r = await fetch(`https://api.github.com/repos/${repo}${path}`, {
     ...init, signal: AbortSignal.timeout(15000),
@@ -143,6 +143,17 @@ export async function reapStale(force = false) {
     else if (age(p.updated_at) > Math.max(L.render_stall_sec * 2, 300) * 1000) why = `렌더 워커 응답이 ${sec(age(p.updated_at))} 동안 없어 자동 정지`;
     else if (age(p.requested_at) > (L.render_timeout_min + 5) * 60000) why = `전체 ${L.render_timeout_min}분 제한을 넘어 자동 정지`;
     if (why) { await stopRender(c.id, 'timeout', why); renders++; }
+  }
+  // 렌더 단계가 '작업 중'인데 살아 있는 진행 기록이 없음 (요청이 워커에 전달되지 않은 예전 실패 등) → 실패로 풀어 줌
+  const qcut = new Date(Date.now() - 180000).toISOString();
+  const { data: rsteps } = await db.from('steps').select('content_id, started_at').eq('step', 'render').eq('state', 'running').lt('started_at', qcut).limit(50);
+  for (const r of rsteps || []) {
+    const { data: c } = await db.from('contents').select('render_progress').eq('id', r.content_id).single();
+    const st = (c?.render_progress as any)?.status;
+    if (st === 'running' || st === 'queued') continue;
+    await db.from('steps').update({ state: 'failed', finished_at: now() }).eq('content_id', r.content_id).eq('step', 'render').eq('state', 'running');
+    await db.from('contents').update({ error: '[render] 렌더 요청이 워커에 전달되지 않아 멈춰 있던 상태를 풀었습니다 — [연결·키]에서 GitHub 연결 확인 후 다시 렌더하세요' }).eq('id', r.content_id);
+    renders++;
   }
   return { steps, renders };
 }

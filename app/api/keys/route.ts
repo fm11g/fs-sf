@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { guard } from '@/lib/auth';
-import { genToken, hydrateEnv, secretsStatus, setSecrets, KEY_GROUPS, siteUrl } from '@/lib/secrets';
+import { genToken, hydrateEnv, normRepo, secretsStatus, setSecrets, KEY_GROUPS, siteUrl } from '@/lib/secrets';
 import { checkRepo, putRepoSecrets } from '@/lib/github-secrets';
 import { providersStatus } from '@/lib/llm';
 
@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
     }
 
     await hydrateEnv(true);
-    const repo = process.env.GITHUB_REPO;
+    const repo = normRepo(process.env.GITHUB_REPO || '');
     const token = process.env.GITHUB_TOKEN;
     if (b.action === 'test_github') {
       if (!repo || !token) throw new Error('저장소와 GitHub 토큰을 먼저 저장하세요');

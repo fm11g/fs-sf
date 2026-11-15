@@ -28,7 +28,9 @@ export default function Keys() {
     try {
       const r = await api('/api/keys', { action, ...extra });
       if (action === 'sync_github') setNote(`GitHub Secrets 등록 완료: ${r.done.join(', ')} — 이제 워커가 나머지 키를 여기서 읽습니다`);
-      if (action === 'test_github') setNote(r.ok ? `저장소 연결 OK · ${r.private ? '비공개' : '공개'} · 워크플로 ${r.workflows?.join(', ') || '없음'}` : `연결 실패: ${r.error}`);
+      if (action === 'test_github') setNote(r.error ? `연결 실패: ${r.error}`
+        : r.ok ? `✓ ${r.repo} 연결 OK · ${r.private ? '비공개' : '공개'} · 워크플로 ${r.workflows?.join(', ') || '없음'} · Secrets ${r.secrets?.join(', ') || '-'}`
+        : `⚠ ${r.repo} 접속은 되지만 렌더 전에 고칠 것: ${(r.problems || []).join(' / ')}`);
       if (action === 'regen') { if (r.value) prompt('새 MCP 토큰 (지금만 보입니다)', r.value); else setNote('새 워커 비밀값 발급 — 워커는 다음 실행부터 자동으로 새 값을 씁니다'); load(); }
       if (action === 'reveal_mcp') prompt('MCP 토큰', r.value || '(없음)');
     } catch (e: any) { alert(e.message); }
