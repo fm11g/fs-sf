@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { FREEDOM_KO, GATE_KO, STATE_KO, STEP_DEFS as ALL_STEPS, stepDef, type StepKey } from '@/lib/steps';
@@ -10,6 +10,8 @@ import { CopyEditor, DesignEditor, JsonEditor, LandingEditor, Readable, ScriptEd
 import RatingBox from './RatingBox';
 import ModelChip from './ModelChip';
 import UsagePanel from '../../UsagePanel';
+import RenderProgress from './RenderProgress';
+import StopBar from './StopBar';
 
 const fmtMs = (ms: number) => (ms >= 60000 ? `${Math.round(ms / 6000) / 10}분` : `${Math.round(ms / 1000)}초`);
 
@@ -26,6 +28,9 @@ export default function Workbench({ params }: { params: { id: string } }) {
   const [edit, setEdit] = useState(false);
   const [exemplars, setExemplars] = useState<any[]>([]);
   const [learnMsg, setLearnMsg] = useState<{ text: string; step?: string } | null>(null);
+  const [limits, setLimits] = useState<{ step_timeout_sec: number; render_timeout_min: number; render_stall_sec: number } | null>(null);
+  const [runAt, setRunAt] = useState<number | null>(null); // 이 화면에서 [실행]을 누른 시각 (서버 기록 전에도 타이머 표시)
+  const stopAuto = useRef(false);
   const me = useMe();
   // 직원: 서버가 권한 블록에 있는 단계만 내려줌 → 그 단계만 레일에 표시
   const STEP_DEFS = ALL_STEPS.filter((d) => steps[d.key]);
@@ -33,6 +38,7 @@ export default function Workbench({ params }: { params: { id: string } }) {
   const load = useCallback(async () => {
     const d = await api(`/api/contents/${params.id}`);
     setC(d.content); setVariant(d.variant); setSteps(d.steps); setJobs(d.jobs || []); setExemplars(d.exemplars || []);
+    if (d.limits) setLimits(d.limits);
     const vis = ALL_STEPS.filter((x) => d.steps[x.key]);
     setSel((cur) => cur || (vis.find((x) => d.steps[x.key]?.state !== 'approved')?.key ?? vis[vis.length - 1]?.key ?? null));
   }, [params.id]);
@@ -43,10 +49,11 @@ export default function Workbench({ params }: { params: { id: string } }) {
     api('/api/bgm').then((d) => setBgms(d.tracks || [])).catch(() => {});
   }, [load]);
   useEffect(() => {
-    if (!Object.values(steps).some((s) => s.state === 'running')) return;
-    const t = setInterval(load, 8000);
+    // 작업 중이면 자주 새로고침 (자동 진행 중에는 지금 도는 단계를 보여 주려고 3초)
+    if (busy !== 'auto' && busy !== 'run' && !Object.values(steps).some((s) => s.state === 'running')) return;
+    const t = setInterval(load, busy ? 3000 : 6000);
     return () => clearInterval(t);
-  }, [steps, load]);
+  }, [steps, load, busy]);
 
   if (c && !sel && !STEP_DEFS.length) return <div className="card locked"><h1>🔒 이 콘텐츠에서 볼 수 있는 단계가 없습니다</h1></div>;
   if (!c || !sel) return <p>불러오는 중…</p>;
@@ -62,7 +69,20 @@ export default function Workbench({ params }: { params: { id: string } }) {
     setBusy(null); setEdit(false);
     await load();
   };
-  const run = (feedback?: string) => act('run', async () => { await api(`/api/pipeline/${sel}`, { contentId: c.id, feedback }); setNote(''); });
+  const run = (feedback?: string) => act('run', async () => {
+    setRunAt(Date.now());
+    try {
+      const r = await api(`/api/pipeline/${sel}`, { contentId: c.id, feedback });
+      if (r?.stopped === 'timeout') alert(`⏱ ${r.message}\n모델을 가볍게 바꾸거나(모델 설정) 제한 시간(설정)을 늘린 뒤 다시 실행하세요.`);
+      setNote('');
+    } finally { setRunAt(null); }
+  });
+  /** 강제 중지 — AI 단계는 진행 중 표시를 바로 풀고 결과를 버림, 자동 진행 반복도 멈춤 */
+  const stopStep = async (step: string) => {
+    stopAuto.current = true;
+    try { await api('/api/stop', { contentId: c!.id, step }); } catch (e: any) { alert(e.message); }
+    await load();
+  };
   /** 학습 제안 생성은 화면을 막지 않고 뒤에서 */
   const triggerLearn = (step: string) => {
     setLearnMsg({ text: 'SOP 학습 제안을 만드는 중… (좋은 예가 쌓였습니다)', step });
@@ -83,8 +103,11 @@ export default function Workbench({ params }: { params: { id: string } }) {
 
   /** 승인 가능한 곳까지 자동 진행: 검수 대기(사람 결정)에서 멈춤 */
   const auto = () => act('auto', async () => {
+    stopAuto.current = false;
     for (let i = 0; i < 12; i++) {
+      if (stopAuto.current) break;
       const r = await api('/api/pipeline/advance', { contentId: c.id });
+      if (stopAuto.current) break;
       await load();
       if (r.step) setSel(r.step);
       if (r.action === 'continue') continue;
@@ -97,6 +120,7 @@ export default function Workbench({ params }: { params: { id: string } }) {
   }).then(auto);
 
   const mayWork = canStep(me, sel, 'work');
+  function runningAi() { return STEP_DEFS.find((d) => d.kind === 'ai' && steps[d.key]?.state === 'running') || null; }
   const canDecide = mayWork && ['review', 'stale', 'rejected'].includes(row.state) && (output != null || def.kind === 'worker');
   const canEdit = can(me, 'editor', 'work') || canStep(me, 'design', 'work');
   const hiddenDep = (b: string) => !steps[b];
@@ -108,10 +132,24 @@ export default function Workbench({ params }: { params: { id: string } }) {
         <h1 style={{ margin: 0 }}>{c.topic || '새 숏폼'} <span className="mute">{c.slug}</span></h1>
         <div className="row">
           {canEdit && c.design && <Link href={`/admin/contents/${c.id}/editor`}><button className="acc">🎬 영상 편집기</button></Link>}
-          {can(me, 'board', 'work') && <button className="acc" disabled={!!busy} onClick={auto}>{busy === 'auto' ? '진행 중…' : '▶ 가능한 곳까지 자동 진행'}</button>}
+          {can(me, 'board', 'work') && (busy === 'auto'
+            ? <button className="danger-btn" onClick={() => { stopAuto.current = true; const r = runningAi(); if (r) stopStep(r.key); }}>■ 자동 진행 멈춤</button>
+            : <button className="acc" disabled={!!busy} onClick={auto}>▶ 가능한 곳까지 자동 진행</button>)}
           {me?.role === 'owner' && <button onClick={() => confirm('이 콘텐츠를 삭제할까요?') && api(`/api/contents/${c.id}`, undefined, 'DELETE').then(() => (location.href = '/admin'))}>삭제</button>}
         </div>
       </div>
+      {(() => {
+        // 지금 돌고 있는 AI 단계 (서버 기록 기준, 없으면 방금 누른 [실행])
+        const r = runningAi() || (busy === 'run' && sel && def.kind === 'ai' ? { key: sel, label: def.label } : null);
+        if (!r) return null;
+        const st = steps[r.key];
+        const started = st?.state === 'running' && st.started_at ? st.started_at : runAt || Date.now();
+        return (
+          <StopBar label={`${stepDef(r.key as StepKey).no} ${r.label}`} startedAt={started} limitSec={limits?.step_timeout_sec || 280}
+            canStop={canStep(me, r.key as StepKey, 'work')} onStop={() => stopStep(r.key)}
+            extra={busy === 'auto' ? <span className="mute">· 자동 진행 중</span> : sel !== r.key ? <a href="#" onClick={(e) => { e.preventDefault(); setSel(r.key as StepKey); }}>이 단계 보기</a> : null} />
+        );
+      })()}
       <UsagePanel query={`content_id=${c.id}`} title="이 숏폼 전체 API 사용" refreshKey={Object.values(steps).map((r: any) => r?.finished_at).join()} />
       <div style={{ height: 14 }} />
       {c.error && <div className="card bad">{c.error}</div>}
@@ -163,7 +201,7 @@ export default function Workbench({ params }: { params: { id: string } }) {
               <>
                 <div className="row" style={{ marginTop: 10 }}>
                   <button className="pri" disabled={!!busy || blocked.length > 0 || row.state === 'running'} onClick={() => run()}>
-                    {busy === 'run' || row.state === 'running' ? '작업 중…' : output ? '처음부터 다시 생성' : '실행'}
+                    {busy === 'run' || row.state === 'running' ? '작업 중… (위에서 중지 가능)' : output ? '처음부터 다시 생성' : '실행'}
                   </button>
                   {canDecide && <>
                     <button className="ok" disabled={!!busy} onClick={() => decideStep('approve')}>승인</button>
@@ -194,7 +232,7 @@ export default function Workbench({ params }: { params: { id: string } }) {
                   </select>
                 </label>
                 <button className="pri" disabled={!!busy || blocked.length > 0 || row.state === 'running'} onClick={() => act('render', () => api('/api/render', { contentId: c.id }))}>
-                  {row.state === 'running' ? '렌더 중… (3~6분)' : c.video_url ? '다시 렌더' : '렌더 시작'}
+                  {row.state === 'running' ? '렌더 중… 아래 진행 상황' : c.video_url ? '다시 렌더' : '렌더 시작'}
                 </button>
                 {canDecide && c.video_url && <>
                   <button className="ok" disabled={!!busy} onClick={() => decideStep('approve')}>영상 승인</button>
@@ -215,6 +253,8 @@ export default function Workbench({ params }: { params: { id: string } }) {
               </div>
             )}
           </div>
+
+          {sel === 'render' && <RenderProgress contentId={c.id} active={busy === 'render' || row.state === 'running'} onFinish={load} canStop={mayWork} />}
 
           {def.kind === 'ai' && output != null && mayWork && (
             <RatingBox contentId={c.id} step={sel} row={row} ratings={exemplars.filter((x) => x.step === sel)} canApprove={canDecide}

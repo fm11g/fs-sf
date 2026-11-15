@@ -1,6 +1,7 @@
 import { db, env, loadSecrets, log, notifySite, setStep, settings } from './env.js';
 import { analyzeReference } from './reference.js';
 import { render } from './render.js';
+import { failCurrent } from './progress.js';
 import { publish } from './publish.js';
 import { collectChannels } from './channels.js';
 
@@ -82,14 +83,18 @@ async function main() {
     }
   } catch (e: any) {
     console.error(e);
+    const stop = e?.name === 'StopError' ? (e.kind as 'user' | 'timeout') : undefined;
     if (contentId) {
-      await db.from('contents').update({ status: 'failed', error: `[worker:${mode}] ${e.message}` }).eq('id', contentId);
+      await db.from('contents').update({ status: 'failed', error: `[worker:${mode}] ${stop === 'timeout' ? '자동 정지 — ' : stop === 'user' ? '중지 — ' : ''}${e.message}` }).eq('id', contentId);
       if (mode === 'render' || mode === 'publish') await setStep(contentId, mode, { state: 'failed', finished_at: new Date().toISOString() });
-      if (mode === 'render') await notifySite('step_failed', contentId, 'render', e.message);
+      if (mode === 'render' || mode === 'factory') await failCurrent(String(e.message || e).slice(0, 500), stop);
+      // 사람이 중지한 건 실패 알림을 보내지 않음
+      if (mode === 'render' && stop !== 'user') await notifySite('step_failed', contentId, 'render', e.message);
       await log(contentId, mode, 'failed', e.message);
     }
-    process.exit(1);
+    process.exit(stop === 'user' ? 0 : 1);
   }
+  process.exit(0); // 감시견 타이머·끊긴 요청이 남아 있어도 바로 종료
 }
 
 main();

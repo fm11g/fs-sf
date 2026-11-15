@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import { STATE_KO, STEP_DEFS as ALL_STEPS } from '@/lib/steps';
 import { can } from '@/lib/perms';
 import { useMe } from './MeContext';
+import { stageDef } from '@/worker/video/stages';
 
 const ago = (t?: string) => {
   if (!t) return '';
@@ -23,7 +24,9 @@ export default function Board() {
   // 직원은 권한 블록에 있는 단계 컬럼만
   const STEP_DEFS = visible ? ALL_STEPS.filter((d) => visible.includes(d.key)) : ALL_STEPS;
   const load = () => api('/api/board').then((d) => { setItems(d.items); setVisible(d.steps); }).catch(() => {});
-  useEffect(() => { load(); const t = setInterval(load, 15000); return () => clearInterval(t); }, []);
+  // 렌더 중인 카드가 있으면 4초, 아니면 15초마다 새로고침
+  const rendering = items.some((c) => (c.rp_status === 'running' || c.rp_status === 'queued') && Date.now() - Date.parse(c.rp_updated || 0) < 600000);
+  useEffect(() => { load(); const t = setInterval(load, rendering ? 4000 : 15000); return () => clearInterval(t); }, [rendering]);
   useEffect(() => { if (!can(me, 'editorial')) return; api('/api/editorial').then((r) => { const t = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10); setSlot((r.plan?.slots || []).find((x: any) => x.date === t) || null); }).catch(() => {}); }, []);
 
   const create = async () => {
@@ -98,6 +101,13 @@ export default function Board() {
                   <Link key={c.id} href={`/admin/contents/${c.id}`} className={`kcard ${st}`}>
                     <b>{c.topic || '(주제 조사 전)'}</b>
                     <span className={`tag ${st}`}>{d.key === 'done' ? '게시 완료' : STATE_KO[st]}</span> <span className="mute">{ago(c.updated_at)}</span>
+                    {(c.rp_status === 'running' || c.rp_status === 'queued') && Date.now() - Date.parse(c.rp_updated || 0) < 600000 && (
+                      <div className="kprog" title="렌더 진행">
+                        <div className="kprog-bar"><i style={{ width: `${Math.max(2, Number(c.rp_pct) || 0)}%` }} /></div>
+                        <small>🎬 렌더 {Math.floor(Number(c.rp_pct) || 0)}% · {stageDef(c.rp_stage)?.label || '대기'}</small>
+                      </div>
+                    )}
+                    {(c.rp_status === 'failed' || c.rp_status === 'canceled') && cur(c) === 'render' && <small className="kprog-fail">🎬 렌더 {c.rp_status === 'canceled' ? '중지됨' : '실패·자동 정지'} — 작업대에서 확인</small>}
                     <div className="dots">{STEP_DEFS.map((s) => <span key={s.key} className={`dot ${c.steps?.[s.key]?.state || 'pending'}`} title={`${s.label}: ${STATE_KO[c.steps?.[s.key]?.state || 'pending']}`} />)}</div>
                   </Link>
                 );

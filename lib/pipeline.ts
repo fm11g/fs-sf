@@ -1,4 +1,6 @@
 import { siteUrl } from './secrets';
+import { StopError, watchStep } from './stop';
+import { limitsOf } from './limits';
 import { markUsed, referenceBlock } from './references';
 import { ask, type Usage } from './llm';
 import { USER, buildSystem, reviewPrompt } from './prompts';
@@ -359,7 +361,7 @@ function depsBlocked(step: StepKey, rows: Record<string, StepRow>) {
 }
 
 /** 규칙 검사 → 결정 방식(게이트) 적용 → 단계 행 기록 → 하위 단계 무효화 */
-async function settle(step: StepKey, contentId: string, row: StepRow, s: Settings, sop: Sop, gen: Gen, t0: number, regen?: (fb: string) => Promise<Gen>) {
+async function settle(step: StepKey, contentId: string, row: StepRow, s: Settings, sop: Sop, gen: Gen, t0: number, regen?: (fb: string) => Promise<Gen>, beforeSave?: () => Promise<void>) {
   let c = await loadContent(contentId);
   let usage = gen.usage;
   let checks = lint(step, gen.output, c, s, { slots: gen.slots });
@@ -392,6 +394,7 @@ async function settle(step: StepKey, contentId: string, row: StepRow, s: Setting
   }
   if (gen.tried?.length) checks = [...checks, { level: 'warn', msg: `제공자 전환: ${gen.tried.map((t: any) => `${t.provider} 실패`).join(' → ')} → ${gen.provider} 사용` }];
 
+  if (beforeSave) await beforeSave(); // 중지·시간 초과됐으면 저장하지 않음
   const t = now();
   await setStep(contentId, step, {
     state, decided_by: decidedBy, decided_at: decidedBy ? t : null,
@@ -427,20 +430,41 @@ export async function runStep(step: StepKey, contentId: string, opts: { feedback
   const row = rows[step];
   const feedback = opts.feedback || row.feedback || null;
   const t0 = Date.now();
-  await setStep(contentId, step, { state: 'running', started_at: now(), attempts: row.attempts + 1, ai_review: null });
+  const startedAt = now();
+  await setStep(contentId, step, { state: 'running', started_at: startedAt, attempts: row.attempts + 1, ai_review: null });
   await log(contentId, step, 'running', feedback ? `피드백 반영: ${feedback.slice(0, 80)}` : undefined);
+  // 감시: [중지]를 누르거나 제한 시간이 지나면 기다리지 않고 바로 멈춤 (늦게 온 결과는 버림)
+  const limit = limitsOf(s).step_timeout_sec;
+  const w = watchStep(contentId, step, startedAt, limit);
+  const race = <T,>(p: Promise<T>) => Promise.race([p, w.promise]) as Promise<T>;
 
   try {
-    const gen = await generate(step, c, s, sop, feedback, opts.provider);
-    return await settle(step, contentId, row, s, sop, gen, t0,
-      async (fb) => generate(step, await loadContent(contentId), s, sop, fb, opts.provider));
+    const gen = await race(generate(step, c, s, sop, feedback, opts.provider));
+    return await race(settle(step, contentId, row, s, sop, gen, t0,
+      async (fb) => race(generate(step, await loadContent(contentId), s, sop, fb, opts.provider)), w.check));
   } catch (e: any) {
+    if (e instanceof StopError) {
+      const ms = Date.now() - t0;
+      if (e.kind === 'timeout') {
+        // 시간 초과: 이 실행이 아직 '작업 중'일 때만 실패로 (그사이 [중지]됐으면 그대로)
+        await sbAdmin().from('steps').update({ state: 'failed', finished_at: now(), work_ms: Number(row.work_ms) + ms })
+          .eq('content_id', contentId).eq('step', step).eq('state', 'running').eq('started_at', startedAt);
+        await sbAdmin().from('contents').update({ error: `[${step}] ${e.message}` }).eq('id', contentId);
+        await log(contentId, step, 'timeout', e.message);
+        await notify('step_failed', { contentId, step, message: e.message });
+      }
+      return { step, state: 'failed', stopped: e.kind, message: e.message };
+    }
+    // 이미 중지된 실행이면 실패 기록으로 덮어쓰지 않음
+    try { await w.check(); } catch (x: any) { if (x?.kind === 'user') return { step, state: 'failed', stopped: 'user', message: '사용자가 중지함' }; }
     await setStep(contentId, step, { state: 'failed', finished_at: now(), work_ms: Number(row.work_ms) + (Date.now() - t0) });
     await sbAdmin().from('contents').update({ error: `[${step}] ${e.message}` }).eq('id', contentId);
     await log(contentId, step, 'failed', e.message);
     await notify('step_failed', { contentId, step, message: e.message });
     await exportNow(() => exportRun(contentId, step, e.message));
     throw e;
+  } finally {
+    w.done();
   }
 }
 

@@ -3,6 +3,10 @@ import { guard } from '@/lib/auth';
 import { dispatch } from '@/lib/github';
 import { requireApproved } from '@/lib/pipeline';
 import { sbAdmin } from '@/lib/supabase/server';
+import { newProgress } from '@/worker/video/stages';
+import { reapStale } from '@/lib/stop';
+import { limitsOf } from '@/lib/limits';
+import { getSettings } from '@/lib/settings';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,14 +15,47 @@ export async function POST(req: NextRequest) {
   const g = await guard(req, 'step:render', 'work');
   if (g.deny) return g.deny;
   const { contentId } = await req.json();
+  const db = sbAdmin();
+  const job = `r${Date.now().toString(36)}`;
   try {
     await requireApproved(contentId, 'render');
-    const db = sbAdmin();
-    await db.from('contents').update({ status: 'rendering', error: null }).eq('id', contentId);
+    const { data: cur } = await db.from('contents').select('render_progress').eq('id', contentId).single();
+    const rp: any = cur?.render_progress;
+    // 진행 중인 렌더가 최근(3분 안에 갱신)이면 중복 요청 막기
+    if (rp && (rp.status === 'running' || rp.status === 'queued') && Date.now() - Date.parse(rp.updated_at) < 180000) {
+      return NextResponse.json({ error: `이미 렌더 중입니다 (${Math.round(rp.pct || 0)}%)` }, { status: 409 });
+    }
+    const p = newProgress(job);
+    p.log[0].msg = `렌더 요청 — ${g.me?.name || g.me?.email || '관리자'}`;
+    await db.from('contents').update({ status: 'rendering', error: null, render_progress: p, cancel_requested_at: null }).eq('id', contentId);
     await db.from('steps').update({ state: 'running', started_at: new Date().toISOString() }).eq('content_id', contentId).eq('step', 'render');
-    await dispatch('render', { content_id: contentId });
-    return NextResponse.json({ ok: true });
+    await dispatch('render', { content_id: contentId, job });
+    return NextResponse.json({ ok: true, job });
   } catch (e: any) {
+    // 요청 단계에서 실패 → 진행 화면에도 실패로 표시
+    const { data: cur } = await db.from('contents').select('render_progress').eq('id', contentId).single();
+    const rp: any = cur?.render_progress;
+    if (rp?.job === job) {
+      const t = new Date().toISOString();
+      rp.status = 'failed'; rp.error = e.message; rp.finished_at = t; rp.updated_at = t;
+      rp.stages.queue = { ...rp.stages.queue, state: 'failed', detail: e.message };
+      rp.log.push({ t, stage: 'queue', msg: e.message, level: 'error' });
+      await db.from('contents').update({ render_progress: rp, status: 'failed', error: `[render] ${e.message}` }).eq('id', contentId);
+      await db.from('steps').update({ state: 'failed', finished_at: t }).eq('content_id', contentId).eq('step', 'render');
+    }
     return NextResponse.json({ error: e.message }, { status: 400 });
   }
+}
+
+/** 렌더 진행 상황 (작업대가 2초마다 읽음) — ?id=콘텐츠ID */
+export async function GET(req: NextRequest) {
+  const g = await guard(req, 'step:render', 'view');
+  if (g.deny) return g.deny;
+  const id = req.nextUrl.searchParams.get('id');
+  if (!id) return NextResponse.json({ error: 'id?' }, { status: 400 });
+  await reapStale().catch(() => {}); // 응답 없는 렌더·AI 단계 자동 정지
+  const { data, error } = await sbAdmin().from('contents').select('status, video_url, render_progress').eq('id', id).single();
+  if (error) return NextResponse.json({ error: error.message }, { status: 404 });
+  const limits = limitsOf(await getSettings().catch(() => ({})));
+  return NextResponse.json({ progress: data.render_progress, status: data.status, video_url: data.video_url, now: new Date().toISOString(), limits });
 }

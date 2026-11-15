@@ -5,6 +5,7 @@ import { env } from './env.js';
 export async function tts(text: string, s: { voice_id?: string; tts_model?: string; tts_speed?: number }) {
   const res = await fetch('https://api.fish.audio/v1/tts', {
     method: 'POST',
+    signal: AbortSignal.timeout(90_000), // 응답이 90초 넘게 없으면 끊음 (렌더가 무한 대기하지 않게)
     headers: {
       Authorization: `Bearer ${env('FISH_AUDIO_API_KEY')}`,
       'Content-Type': 'application/json',

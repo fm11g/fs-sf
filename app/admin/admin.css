@@ -35,6 +35,7 @@
 /* ── v2: 현황판 · 작업대 · SOP · 지표 ── */
 #tpf-admin .card.bad{border-color:#f2b8b0;color:var(--bad)}
 #tpf-admin button.ok{background:var(--ok);border-color:var(--ok);color:#fff}
+#tpf-admin button.danger-btn{background:#d6282e;border-color:#d6282e;color:#fff;font-weight:700}
 #tpf-admin .tag.pending{background:#eef0f5;color:#6b7594}
 #tpf-admin .tag.running{background:#e8f0ff;color:#1739a6}
 #tpf-admin .tag.review{background:#fff4cc;color:#8a6100}
@@ -75,6 +76,12 @@
 #tpf-admin .kcard{display:block;background:#fff;border-radius:10px;padding:9px 10px;margin-bottom:6px;text-decoration:none;color:inherit;border:1px solid var(--line);border-left:4px solid #cfd5e4}
 #tpf-admin .kcard.review{border-left-color:#f0b400}
 #tpf-admin .kcard.running{border-left-color:#1739a6}
+#tpf-admin .kprog{margin:6px 0 2px}
+#tpf-admin .kprog-bar{height:5px;background:#e6eaf2;border-radius:3px;overflow:hidden}
+#tpf-admin .kprog-bar i{display:block;height:100%;background:repeating-linear-gradient(45deg,#2b6cdf 0 8px,#5b8ff0 8px 16px);background-size:22px 22px;animation:kprog 1s linear infinite;transition:width .8s}
+#tpf-admin .kprog small{font-size:11px;color:#1739a6;font-weight:600}
+#tpf-admin .kprog-fail{display:block;font-size:11px;color:#c62828;margin-top:4px}
+@keyframes kprog{to{background-position:22px 0}}
 #tpf-admin .kcard.failed,#tpf-admin .kcard.rejected{border-left-color:var(--bad)}
 #tpf-admin .kcard.stale{border-left-color:#9333ea}
 #tpf-admin .kcard b{display:block;font-size:13px;line-height:1.35;margin-bottom:4px}

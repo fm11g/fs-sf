@@ -20,6 +20,10 @@ const FIELDS: [string, string, 'text' | 'number' | 'bool' | 'list' | 'json'][] =
   ['banned_phrases', '금지 표현 (쉼표 구분)', 'list'],
   ['daily_enabled', '매일 아침 자동 생산 (06:10 KST)', 'bool'],
   ['auto_publish', '모든 단계가 승인되면 워커가 바로 업로드', 'bool'],
+  ['step_timeout_sec', '자동 정지 · AI 단계 1회 최대 시간(초, 기본 280 · 최대 295 — Vercel 함수 300초 제한)', 'number'],
+  ['render_timeout_min', '자동 정지 · 렌더 전체 최대 시간(분, 기본 30 · 최대 40)', 'number'],
+  ['render_stall_sec', '자동 정지 · 렌더 진행이 이 시간(초) 동안 멈추면 정지 (기본 240)', 'number'],
+  ['render_queue_min', '자동 정지 · GitHub Actions 가 이 시간(분) 안에 시작 안 하면 정지 (기본 15)', 'number'],
 ];
 
 export default function SettingsPage() {

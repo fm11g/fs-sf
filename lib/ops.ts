@@ -5,7 +5,7 @@ import { STEP_DEFS, STEP_KEYS } from './steps';
 export async function board(limit = 60) {
   const db = sbAdmin();
   const { data: contents } = await db.from('contents')
-    .select('id, slug, topic, status, current_step, error, video_url, thumbnail_url, youtube_id, instagram_id, created_at, updated_at, published_at')
+    .select('id, slug, topic, status, current_step, error, video_url, thumbnail_url, youtube_id, instagram_id, created_at, updated_at, published_at, rp_status:render_progress->>status, rp_pct:render_progress->pct, rp_stage:render_progress->>stage, rp_updated:render_progress->>updated_at')
     .order('created_at', { ascending: false }).limit(limit);
   const ids = (contents || []).map((c: any) => c.id);
   const { data: steps } = ids.length

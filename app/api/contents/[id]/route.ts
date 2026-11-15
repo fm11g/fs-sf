@@ -4,6 +4,9 @@ import { can, canStep, visibleSteps } from '@/lib/perms';
 import { sbAdmin } from '@/lib/supabase/server';
 import { ensureSteps, onEdited } from '@/lib/pipeline';
 import { STEP_DEFS, type StepKey } from '@/lib/steps';
+import { reapStale } from '@/lib/stop';
+import { limitsOf } from '@/lib/limits';
+import { getSettings } from '@/lib/settings';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,7 +17,9 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   const g = await guard(req, 'board');
   if (g.deny) return g.deny;
   const db = sbAdmin();
+  await reapStale().catch(() => {}); // 응답 없는 작업 자동 정지
   const steps = await ensureSteps(params.id);
+  const limits = limitsOf(await getSettings().catch(() => ({}))); // 작업대의 자동 정지 카운트다운용
   const [{ data: content }, { data: variant }, { data: jobs }, { data: exemplars }] = await Promise.all([
     db.from('contents').select('*').eq('id', params.id).single(),
     db.from('landing_variants').select('*, landing_templates(slots)').eq('content_id', params.id).maybeSingle(),
@@ -35,10 +40,10 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       steps: Object.fromEntries(Object.entries(steps).filter(([k]) => keys.has(k))),
       jobs: (jobs || []).filter((j: any) => keys.has(j.step) || (j.step === 'voice' && keys.has('render'))),
       exemplars: (exemplars || []).filter((x: any) => keys.has(x.step)),
-      me: { role: 'staff', perms: g.me.perms },
+      me: { role: 'staff', perms: g.me.perms }, limits,
     });
   }
-  return NextResponse.json({ content, variant, steps, jobs, exemplars: exemplars || [], me: { role: g.me.role } });
+  return NextResponse.json({ content, variant, steps, jobs, exemplars: exemplars || [], me: { role: g.me.role }, limits });
 }
 
 /** 산출물 직접 수정 → 해당 단계는 '검수 대기', 하위 단계는 '재작업 필요' */

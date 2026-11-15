@@ -56,7 +56,7 @@ bin/tpf.mjs           공장 CLI — MCP가 없는 에이전트도 같은 명령
 landing/govbizfund-template.html govbizfund.co.kr 실제 페이지에 슬롯만 붙인 템플릿(문구 63 + 후기 카드 8장) · landing/template.html 신청 유도형 랜딩 샘플(슬롯 50개 + 신청폼 · 선택 슬롯은 비우면 자동 숨김)
 worker/               렌더·업로드 워커 (video/Short.tsx 진입 · news.tsx 언론사 레이아웃 · caption.tsx 자막 · layers.tsx 모션 레이어)
 lib/video-style.ts    영상 스타일(프리셋·적용) · lib/motion-guide.ts Claude 디자인·모션 지침 · app/admin/styles 영상 스타일 화면
-supabase/migrations/  001 → 002 → 003 → 004 → 005 → … → 011_video_styles.sql 순서 (setup/supabase-all-in-one.sql 하나로 전부)
+supabase/migrations/  001 → 002 → 003 → 004 → 005 → … → 013_stop.sql 순서 (setup/supabase-all-in-one.sql 하나로 전부)
 docs/                 SETUP · OPERATIONS(운영 SOP) · API-MCP
 ```
 
@@ -67,7 +67,7 @@ docs/                 SETUP · OPERATIONS(운영 SOP) · API-MCP
 - [docs/CHANNELS-EDITORIAL.md](docs/CHANNELS-EDITORIAL.md) — 채널 연결, 최종 점수 계산, 새로움 유지 편성(선별·흐름·순서)과 기획 연동
 - [docs/DATA-SCORES.md](docs/DATA-SCORES.md) — 점수·태그, GitHub·구글 시트 데이터 저장, 점수 기반 결과물·SOP 최적화
 - [docs/LEARNING-NOTIFY.md](docs/LEARNING-NOTIFY.md) — 좋은 결과물로 SOP 자동 보완, 수동 조절, 이메일 알림 설정과 내용
-- [docs/VIDEO-STYLE.md](docs/VIDEO-STYLE.md) — 언론사 템플릿 9종, 레퍼런스 캡처·링크로 영상 스타일 만들기, Claude 모션 레이어, 자막 세부 조정
+- [docs/VIDEO-STYLE.md](docs/VIDEO-STYLE.md) — 언론사 템플릿 9종, 레퍼런스 캡처·링크로 영상 스타일 만들기, Claude 모션 레이어, 자막 세부 조정, 렌더 진행 상황(진행 바·%·단계·로그), 강제 중지·자동 정지
 - [docs/AGENTS-SKILLS.md](docs/AGENTS-SKILLS.md) — Claude Code·Codex·오픈소스 에이전트 연결, 스킬 사용법, AI 제공자 전환, API 키 없이 진행하는 법
 - [docs/API-MCP.md](docs/API-MCP.md) — REST API와 MCP 도구 목록, Claude 연결 방법
 - [sop/README.md](sop/README.md) — SOP 작성 규칙과 단계별 파일

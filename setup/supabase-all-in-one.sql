@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════════
--- 오늘의 정책자금 숏폼 공장 — Supabase 전체 설치 SQL (001 ~ 011 통합)
+-- 오늘의 정책자금 숏폼 공장 — Supabase 전체 설치 SQL (001 ~ 013 통합)
 -- 사용법: Supabase 대시보드 → SQL Editor → New query → 전체 붙여넣기 → Run
 -- 여러 번 실행해도 안전합니다(이미 있는 것은 건너뜀). 예전 버전을 이미 실행했어도 그대로 다시 실행하면 됩니다.
 -- 관리자 이메일은 여기서 넣지 않습니다: 배포 후 사이트에 처음 접속하면 '대표 계정 만들기' 화면이 나옵니다.
@@ -697,6 +697,86 @@ create policy admin_all on public.video_styles for all to authenticated using (p
 
 -- 콘텐츠별 스타일 ('news-navy' 같은 기본 프리셋 키 또는 video_styles.id). 비우면 설정의 기본 스타일
 alter table public.contents add column if not exists style_key text;
+
+
+-- ┌──────────────────────────────────────────────
+-- │ 012_render_progress.sql
+-- └──────────────────────────────────────────────
+-- 012: 렌더 진행 상황 (진행 바 · % · 단계별 작업 과정 · 로그)
+-- 워커가 1~2초마다 갱신, 관리자 작업대·현황판이 읽어 표시. 구조: worker/video/stages.ts RenderProgress
+alter table public.contents add column if not exists render_progress jsonb;
+
+-- 렌더 서버 준비 단계(설치 중, Node 시작 전)에서 GitHub Actions 가 curl 로 부분 갱신할 때 씀
+-- patch 의 최상위 키를 덮어쓰고, stages·log 는 합침. 같은 job 이 아니면 무시(예전 실행이 늦게 쓰는 것 방지)
+create or replace function public.render_progress_patch(cid uuid, patch jsonb) returns void
+language plpgsql security definer set search_path = public as $$
+declare cur jsonb;
+begin
+  select coalesce(render_progress, '{}'::jsonb) into cur from public.contents where id = cid for update;
+  if not found then return; end if;
+  -- 이미 끝난 기록에 '실패' 덮어쓰기 금지 (워커가 실제 사유를 먼저 기록함)
+  if patch->>'status' = 'failed' and cur->>'status' in ('failed', 'done') then return; end if;
+  -- 다른 요청(job)의 늦은 기록은 무시
+  if coalesce(patch->>'job', '') <> '' and coalesce(cur->>'job', '') <> '' and cur->>'job' <> patch->>'job' then return; end if;
+  if coalesce(patch->>'job', '') = '' then patch := patch - 'job'; end if;
+  -- 끝난 기록 위에 새 실행(수동 실행 등)이 시작되면 새로 시작
+  if cur->>'status' in ('failed', 'done') then
+    cur := jsonb_build_object('job', coalesce(patch->>'job', 'manual'), 'requested_at', to_jsonb(now()), 'stages', '{}'::jsonb, 'log', '[]'::jsonb);
+  end if;
+  update public.contents set render_progress =
+    (cur || (patch - 'stages' - 'log_add'))
+    || jsonb_build_object('stages', coalesce(cur->'stages', '{}'::jsonb) || coalesce(patch->'stages', '{}'::jsonb))
+    || jsonb_build_object('log', (
+         select coalesce(jsonb_agg(x order by i), '[]'::jsonb) from (
+           select x, i from jsonb_array_elements(coalesce(cur->'log', '[]'::jsonb) || coalesce(patch->'log_add', '[]'::jsonb)) with ordinality as e(x, i)
+           order by i desc limit 80
+         ) s))
+    || jsonb_build_object('updated_at', to_jsonb(now()))
+  where id = cid;
+end $$;
+revoke all on function public.render_progress_patch(uuid, jsonb) from public, anon, authenticated;
+grant execute on function public.render_progress_patch(uuid, jsonb) to service_role;
+
+
+-- ┌──────────────────────────────────────────────
+-- │ 013_stop.sql
+-- └──────────────────────────────────────────────
+-- 013: 강제 중지 · 자동 정지
+-- [중지] 또는 자동 정지 때 사이트가 시각을 기록 → 렌더 워커가 4초마다 확인하고 스스로 멈춤 (GitHub 실행 취소가 안 될 때 대비)
+alter table public.contents add column if not exists cancel_requested_at timestamptz;
+
+-- 렌더 진행 부분 갱신 함수: '중지됨(canceled)' 상태를 끝난 상태로 취급
+create or replace function public.render_progress_patch(cid uuid, patch jsonb) returns void
+language plpgsql security definer set search_path = public as $$
+declare cur jsonb;
+begin
+  select coalesce(render_progress, '{}'::jsonb) into cur from public.contents where id = cid for update;
+  if not found then return; end if;
+  -- 이미 끝난 기록에 '실패' 덮어쓰기 금지 (워커가 실제 사유를 먼저 기록함)
+  if patch->>'status' = 'failed' and cur->>'status' in ('failed', 'done', 'canceled') then return; end if;
+  if coalesce(patch->>'job', '') = '' then patch := patch - 'job'; end if;
+  if cur->>'status' in ('failed', 'done', 'canceled') then
+    -- 같은 요청이 이미 끝났으면(중지·자동 정지·완료) 늦게 온 설치 단계 기록은 무시
+    if coalesce(patch->>'job', '') <> '' and patch->>'job' = cur->>'job' then return; end if;
+    -- 끝난 기록 위에 새 실행(수동 실행 등)이 시작되면 새로 시작
+    cur := jsonb_build_object('job', coalesce(patch->>'job', 'manual'), 'requested_at', to_jsonb(now()), 'stages', '{}'::jsonb, 'log', '[]'::jsonb);
+  elsif coalesce(patch->>'job', '') <> '' and coalesce(cur->>'job', '') <> '' and cur->>'job' <> patch->>'job' then
+    -- 진행 중인 다른 요청(job)이 있으면 늦게 온 예전 기록은 무시
+    return;
+  end if;
+  update public.contents set render_progress =
+    (cur || (patch - 'stages' - 'log_add'))
+    || jsonb_build_object('stages', coalesce(cur->'stages', '{}'::jsonb) || coalesce(patch->'stages', '{}'::jsonb))
+    || jsonb_build_object('log', (
+         select coalesce(jsonb_agg(x order by i), '[]'::jsonb) from (
+           select x, i from jsonb_array_elements(coalesce(cur->'log', '[]'::jsonb) || coalesce(patch->'log_add', '[]'::jsonb)) with ordinality as e(x, i)
+           order by i desc limit 80
+         ) s))
+    || jsonb_build_object('updated_at', to_jsonb(now()))
+  where id = cid;
+end $$;
+revoke all on function public.render_progress_patch(uuid, jsonb) from public, anon, authenticated;
+grant execute on function public.render_progress_patch(uuid, jsonb) to service_role;
 
 
 -- 확인용: 테이블 목록 (24개가 나오면 완료)
