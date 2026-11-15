@@ -31,6 +31,14 @@ export const DEFAULT_PRICES: PriceTable = {
   'tavily:search': { note: '요금제 확인 후 입력 (오픈소스 모델 웹검색)' },
   'searxng:search': { per_search: 0, note: '자체 서버' },
   'fish:tts': { unit: '글자', note: 'Fish Audio 요금제 확인 후 입력' },
+  'elevenlabs:tts': { unit: '글자', note: '요금제(크레딧)마다 다름 — 내 요금제의 1글자 단가를 입력' },
+  'google:tts-chirp3hd': { per_unit: 0.00003, unit: '글자', note: 'Chirp 3 HD $30/100만 자 (매달 100만 자 무료 — 무료분은 반영 안 함, 2026-11 확인)' },
+  'google:tts-neural2': { per_unit: 0.000016, unit: '글자', note: 'Neural2 $16/100만 자 (매달 100만 자 무료)' },
+  'google:tts-wavenet': { per_unit: 0.000004, unit: '글자', note: 'WaveNet $4/100만 자 (매달 400만 자 무료)' },
+  'google:tts-standard': { per_unit: 0.000004, unit: '글자', note: 'Standard $4/100만 자 (매달 400만 자 무료)' },
+  'google:tts-studio': { per_unit: 0.00016, unit: '글자', note: 'Studio $160/100만 자' },
+  'openai:tts': { per_unit: 0.015, unit: '분', note: 'gpt-4o-mini-tts 약 $0.015/분 (토큰 단가 $0.60/$12 환산, 2026-11 확인)' },
+  'oss:tts': { per_unit: 0, unit: '글자', note: '직접 운영 서버면 0' },
   'fish:asr': { unit: '분', note: 'Fish Audio 음성 인식 — 요금제 확인 후 입력' },
   'github:actions': { unit: '분', note: '비공개 저장소 무료 한도 초과분만 청구 — 요금 확인 후 입력' },
   'youtube:api': { per_unit: 0, unit: '쿼터', note: '무료 (하루 쿼터 한도만 있음)' },
@@ -40,7 +48,7 @@ export const DEFAULT_PRICES: PriceTable = {
 
 export const PLATFORM_LABEL: Record<string, string> = {
   anthropic: 'Anthropic (Claude)', openai: 'OpenAI', oss: '오픈소스 모델', tavily: 'Tavily 검색', searxng: 'SearXNG 검색',
-  fish: 'Fish Audio', github: 'GitHub Actions', youtube: 'YouTube API', instagram: 'Instagram API', email: '이메일', agent: '외부 에이전트',
+  fish: 'Fish Audio', elevenlabs: 'ElevenLabs', google: 'Google Cloud', github: 'GitHub Actions', youtube: 'YouTube API', instagram: 'Instagram API', email: '이메일', agent: '외부 에이전트',
 };
 export const KIND_LABEL: Record<string, string> = { llm: 'AI 생성', search: '웹검색', tts: 'AI 목소리', stt: '음성 인식', render: '영상 렌더', upload: '업로드', analytics: '채널 통계', email: '메일' };
 /** ask() 의 provider id → 플랫폼 */

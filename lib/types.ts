@@ -4,6 +4,13 @@ export type Settings = {
   voice_id: string;
   tts_model: string;
   tts_speed: number;
+  /** AI 목소리 제공자·예비 순서·제공자별 목소리 (worker/video/tts-core.ts) */
+  tts_provider?: 'fish' | 'elevenlabs' | 'google' | 'openai' | 'oss';
+  tts_fallback?: ('fish' | 'elevenlabs' | 'google' | 'openai' | 'oss')[];
+  eleven_voice_id?: string; eleven_model?: string; eleven_stability?: number; eleven_similarity?: number; eleven_style?: number;
+  google_voice?: string; google_lang?: string;
+  openai_tts_model?: string; openai_tts_voice?: string; openai_tts_instructions?: string;
+  oss_tts_model?: string; oss_tts_voice?: string;
   auto_publish: boolean;
   daily_enabled: boolean;
   default_hashtags: string[];

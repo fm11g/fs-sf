@@ -8,6 +8,7 @@ import { reapStale } from '@/lib/stop';
 import { limitsOf } from '@/lib/limits';
 import { getSettings } from '@/lib/settings';
 import { hydrateEnv } from '@/lib/secrets';
+import { ttsChain, ttsReady, TTS_PROVIDERS } from '@/worker/video/tts-core';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,7 +25,12 @@ export async function POST(req: NextRequest) {
     // 렌더 전 점검 — 워커를 띄우기 전에 빠진 것을 알려 줌 (몇 분 기다렸다가 실패하지 않게)
     await hydrateEnv(true);
     const miss: string[] = [];
-    if (!process.env.FISH_AUDIO_API_KEY) miss.push('Fish Audio API 키가 비어 있음 → [연결·키] > AI 목소리 (목소리 없이는 렌더 불가)');
+    const sv: any = await getSettings().catch(() => ({}));
+    const chain = ttsChain(sv);
+    if (!chain.some((p) => ttsReady(p, process.env))) {
+      const names = chain.map((p) => TTS_PROVIDERS.find((x) => x.id === p)?.label || p).join(' → ');
+      miss.push(`AI 목소리 키가 없음 (설정한 순서: ${names}) → [연결·키] > AI 목소리에 키를 넣거나 [설정 > AI 목소리]에서 제공자를 바꾸세요`);
+    }
     if (!process.env.GITHUB_REPO || !process.env.GITHUB_TOKEN) miss.push('GitHub 저장소·토큰이 비어 있음 → [연결·키] > 워커(GitHub)');
     if (!process.env.SITE_URL) miss.push('사이트 주소(SITE_URL)가 비어 있음 → [연결·키] > 자동 생성');
     const col = await db.from('contents').select('render_progress, cancel_requested_at').eq('id', contentId).single();

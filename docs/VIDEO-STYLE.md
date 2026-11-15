@@ -108,3 +108,24 @@
 - 사이트: `lib/stop.ts`, `app/api/stop`.
 - 워커: `worker/src/watchdog.ts`. 기준값 정의는 `worker/video/limits.ts`.
 - DB: `contents.cancel_requested_at`(013).
+
+## 8. AI 목소리 제공자 ([설정 > AI 목소리])
+
+| 제공자 | 키 ([연결·키] > AI 목소리) | 목소리 설정 | 단가 기본값 |
+|---|---|---|---|
+| Fish Audio | `FISH_AUDIO_API_KEY` | 보이스 ID, 모델(s1) | 요금제 입력 |
+| ElevenLabs | `ELEVENLABS_API_KEY` | 보이스 ID, 모델(eleven_multilingual_v2 · v3 · flash_v2_5), 안정성·유사도·스타일 | 요금제(크레딧)별 입력 |
+| Google Cloud TTS | `GOOGLE_TTS_API_KEY` 또는 서비스 계정 JSON | 목소리 이름(예: `ko-KR-Chirp3-HD-Charon`), 언어 코드 | Chirp3-HD $30 · Neural2 $16 · WaveNet/Standard $4 (100만 자당) |
+| OpenAI | `OPENAI_API_KEY` | 모델(gpt-4o-mini-tts), 목소리, 말투 지시 | 약 $0.015/분 |
+| 오픈소스 | `OSS_TTS_BASE_URL` (+`OSS_TTS_API_KEY`) | 모델, 목소리 | 0 |
+
+- **예비 제공자**: 기본 제공자가 실패하면 순서대로 넘어갑니다.
+  - 첫 장면에서 성공한 제공자로 영상 한 편 전체를 읽습니다. 장면마다 목소리가 섞이지 않습니다.
+  - 어떤 제공자를 썼는지, 앞 제공자가 왜 실패했는지가 렌더 로그에 남습니다.
+- **미리 듣기**: 저장하지 않은 값으로도 들어 볼 수 있고, 제공자별로 따로 들어 볼 수도 있습니다.
+- **Google 준비**: Google Cloud 콘솔에서 Cloud Text-to-Speech API를 사용 설정하고 결제를 연결한 뒤, 사용자 인증 정보에서 API 키를 만듭니다.
+- **오픈소스 서버**: OpenAI 호환 `/v1/audio/speech` 를 제공하는 서버면 됩니다.
+  - 예: openai-edge-tts, Kokoro-FastAPI 등. 한국어 지원 여부는 서버와 모델마다 다릅니다.
+  - mp3 대신 wav를 돌려줘도 처리합니다.
+- **사용 기록**: 사용량과 비용은 제공자별로 [API 사용량]에 기록됩니다. Google은 목소리 등급에 따라 단가가 자동으로 적용됩니다.
+- 렌더 전 점검은 설정한 제공자 중 하나라도 키가 있는지 확인합니다.

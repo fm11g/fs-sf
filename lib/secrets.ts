@@ -12,7 +12,7 @@ export type KeyDef = { key: string; label: string; group: string; secret?: boole
 export const KEY_GROUPS: { group: string; desc: string }[] = [
   { group: 'AI', desc: '하나 이상 필요. 여러 개 넣으면 실패 시 다음 제공자로 자동 전환 · 작업별 모델과 생각 깊이는 [AI 모델] 메뉴에서 선택' },
   { group: '워커(GitHub)', desc: '렌더·업로드·채널 수집·참고 영상 분석을 돌리는 GitHub Actions' },
-  { group: 'AI 목소리', desc: '렌더 단계 TTS' },
+  { group: 'AI 목소리', desc: '렌더 단계 TTS — 쓸 제공자 하나 이상. 어느 것을 쓸지·목소리·예비 순서는 [설정 > AI 목소리]에서' },
   { group: '유튜브', desc: '업로드·댓글·채널 성과' },
   { group: '인스타그램', desc: '릴스 업로드·채널 성과' },
   { group: '이메일 알림', desc: 'Resend 또는 Gmail SMTP 중 하나' },
@@ -34,6 +34,10 @@ export const KEY_DEFS: KeyDef[] = [
   { key: 'GITHUB_TOKEN', label: 'GitHub 토큰', group: '워커(GitHub)', secret: true, help: 'Fine-grained · 이 저장소 · Contents·Secrets·Actions 읽기/쓰기 (Actions 는 렌더 중지용). 저장 후 [워커에 적용] → [연결 확인]으로 점검' },
 
   { key: 'FISH_AUDIO_API_KEY', label: 'Fish Audio API 키', group: 'AI 목소리', secret: true },
+  { key: 'ELEVENLABS_API_KEY', label: 'ElevenLabs API 키', group: 'AI 목소리', secret: true, placeholder: 'sk_…', help: 'elevenlabs.io → 프로필 → API Keys (Text to Speech 권한)' },
+  { key: 'GOOGLE_TTS_API_KEY', label: 'Google Cloud TTS API 키', group: 'AI 목소리', secret: true, placeholder: 'AIza…', help: 'Google Cloud 콘솔 → Cloud Text-to-Speech API 사용 설정 → 사용자 인증 정보에서 API 키 (비우면 [데이터 내보내기]의 서비스 계정 JSON 으로 인증)' },
+  { key: 'OSS_TTS_BASE_URL', label: '오픈소스 TTS 서버 주소', group: 'AI 목소리', placeholder: 'https://내서버/v1', help: 'OpenAI 호환 /v1/audio/speech 를 제공하는 서버 (예: openai-edge-tts, Kokoro-FastAPI 등을 직접 띄운 주소)' },
+  { key: 'OSS_TTS_API_KEY', label: '오픈소스 TTS 서버 키', group: 'AI 목소리', secret: true, help: '서버에 키가 없으면 비워 두세요' },
 
   { key: 'YT_CLIENT_ID', label: 'OAuth 클라이언트 ID', group: '유튜브', placeholder: '….apps.googleusercontent.com' },
   { key: 'YT_CLIENT_SECRET', label: 'OAuth 클라이언트 보안 비밀', group: '유튜브', secret: true },
@@ -76,7 +80,7 @@ export function normRepo(v: string) {
     .replace(/\.git$/i, '').replace(/\/+$/, '').split('/').slice(0, 2).join('/');
 }
 /** 워커(GitHub Actions)가 읽는 키 — 워커도 DB 에서 직접 읽으므로 GitHub Secrets 엔 Supabase 2개만 있으면 됨 */
-export const WORKER_KEYS = ['SITE_URL', 'WORKER_SECRET', 'FISH_AUDIO_API_KEY', 'YT_CLIENT_ID', 'YT_CLIENT_SECRET', 'YT_REFRESH_TOKEN', 'YT_API_KEY', 'IG_USER_ID', 'IG_ACCESS_TOKEN', 'GRAPH_VERSION', 'IG_GRAPH_HOST', 'OPENAI_API_KEY'];
+export const WORKER_KEYS = ['SITE_URL', 'WORKER_SECRET', 'FISH_AUDIO_API_KEY', 'ELEVENLABS_API_KEY', 'GOOGLE_TTS_API_KEY', 'GOOGLE_SERVICE_ACCOUNT_JSON', 'OSS_TTS_BASE_URL', 'OSS_TTS_API_KEY', 'YT_CLIENT_ID', 'YT_CLIENT_SECRET', 'YT_REFRESH_TOKEN', 'YT_API_KEY', 'IG_USER_ID', 'IG_ACCESS_TOKEN', 'GRAPH_VERSION', 'IG_GRAPH_HOST', 'OPENAI_API_KEY'];
 
 // ── 실행 중 적용 ────────────────────────────────────────────────────
 const TTL = 20_000;

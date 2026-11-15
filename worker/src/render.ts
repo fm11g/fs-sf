@@ -6,6 +6,7 @@ import { makeCancelSignal, renderMedia, renderStill, selectComposition } from '@
 import { db, gateOf, getStep, log, notifySite, setStep, settings, syncCurrent, uploadPublic } from './env.js';
 import { logUsage } from './usage.js';
 import { tts } from './tts.js';
+import { ttsChain, TTS_PROVIDERS, type TtsProvider } from '../video/tts-core.js';
 import { buildProps, narrationOf } from '../video/props.js';
 import { sceneStarts } from '../video/common.js';
 import { getCurrent, Progress, setCurrent } from './progress.js';
@@ -47,7 +48,10 @@ async function renderInner(contentId: string, s: any, wd: Watchdog) {
   // 1) AI 목소리: 장면별 TTS → 실제 길이로 타이밍 확정
   await log(contentId, 'voice', 'running');
   const n = c.script.scenes.length;
-  await pr.begin('voice', `${n}개 장면 · ${s.tts_model || 's1'} · 속도 ${s.tts_speed || 1}`);
+  const chain = ttsChain(s);
+  const plabel = (p: string) => TTS_PROVIDERS.find((x) => x.id === p)?.label || p;
+  await pr.begin('voice', `${n}개 장면 · ${chain.map(plabel).join(' → ')} · 속도 ${s.tts_speed || 1}`);
+  let voiceBy: TtsProvider | undefined; // 첫 장면에서 성공한 제공자로 영상 전체를 읽음 (목소리 섞이지 않게)
   const audio: any[] = [];
   const ttsRows: any[] = [];
   for (const [i, sc] of c.script.scenes.entries()) {
@@ -59,9 +63,15 @@ async function renderInner(contentId: string, s: any, wd: Watchdog) {
     if (row) row.voice = 'running';
     pr.step('voice', (i / n) * 100, `장면 ${i + 1}/${n} 읽는 중 — "${text.slice(0, 24)}${text.length > 24 ? '…' : ''}"`);
     const tt = Date.now();
-    const { buf, duration } = await tts(text, s);
-    ttsRows.push({ kind: 'tts', platform: 'fish', model: s.tts_model || 's1', price_key: 'tts', units: text.length, unit: '글자', ms: Date.now() - tt });
-    const url = await uploadPublic(`contents/${c.slug}/voice-${sc.id}.mp3`, buf, 'audio/mpeg');
+    const v = await tts(text, s, voiceBy);
+    const { buf, duration } = v;
+    if (!voiceBy) {
+      voiceBy = v.provider;
+      for (const t of v.tried) pr.log(`${plabel(t.provider)} 실패 → 다음 제공자로: ${t.error.slice(0, 160)}`, 'voice', 'warn');
+      pr.log(`목소리 제공자: ${plabel(v.provider)} · ${v.model}`, 'voice');
+    }
+    ttsRows.push({ kind: 'tts', platform: v.provider, model: v.model, price_key: v.priceKey, units: v.unitKind === '분' ? Number((duration / 60).toFixed(4)) : text.length, unit: v.unitKind, ms: Date.now() - tt });
+    const url = await uploadPublic(`contents/${c.slug}/voice-${sc.id}.${v.ext}`, buf, v.mime);
     audio.push({ id: sc.id, url, duration: Number((duration + PAD).toFixed(2)), text }); // text: 편집기에서 대사가 바뀌었는지 판단용
     if (row) Object.assign(row, { voice: 'done', voice_url: url, sec: Number((duration + PAD).toFixed(2)) });
     pr.log(`장면 ${i + 1} ${sc.id} 목소리 ${duration.toFixed(1)}초 · ${text.length}자 (${((Date.now() - tt) / 1000).toFixed(1)}초 걸림)`, 'voice');

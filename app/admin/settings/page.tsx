@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { sbBrowser } from '@/lib/supabase/client';
 import { NOTIFY_EVENTS } from '@/lib/notify-events';
+import VoicePanel from './VoicePanel';
 
 const FIELDS: [string, string, 'text' | 'number' | 'bool' | 'list' | 'json'][] = [
   ['brand', '채널명', 'text'],
@@ -13,9 +14,6 @@ const FIELDS: [string, string, 'text' | 'number' | 'bool' | 'list' | 'json'][] =
   ['lead_webhook', '신청 접수 웹훅 URL (기존 DB 시스템으로 전달, 선택)', 'text'],
   ['mcp_servers', '조사 단계에 연결할 MCP 서버 JSON [{"name","url","token"}]', 'json'],
   ['llm_chain', 'AI 제공자 전환 순서 (쉼표 구분: claude, openai, oss)', 'list'],
-  ['voice_id', 'Fish Audio 보이스 ID (reference_id)', 'text'],
-  ['tts_model', 'Fish Audio 모델 (예: s1)', 'text'],
-  ['tts_speed', '말 속도 (1.0 = 기본)', 'number'],
   ['default_hashtags', '기본 해시태그 (쉼표 구분)', 'list'],
   ['banned_phrases', '금지 표현 (쉼표 구분)', 'list'],
   ['daily_enabled', '매일 아침 자동 생산 (06:10 KST)', 'bool'],
@@ -75,6 +73,8 @@ export default function SettingsPage() {
         ))}
         <button className="pri" onClick={save}>저장</button>
       </div>
+
+      <VoicePanel v={v} setV={setV} onSave={save} />
 
       <div className="card">
         <h2>📧 이메일 알림</h2>
