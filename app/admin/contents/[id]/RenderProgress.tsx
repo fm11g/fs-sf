@@ -22,6 +22,7 @@ export default function RenderProgress({ contentId, active, onFinish, canStop = 
   const [showLog, setShowLog] = useState(true);
   const [limits, setLimits] = useState<{ render_timeout_min: number; render_stall_sec: number; render_queue_min: number } | null>(null);
   const [stopping, setStopping] = useState(false);
+  const [gh, setGh] = useState<any>(null);
   const prevStatus = useRef<string | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
   const live = !!p && (p.status === 'queued' || p.status === 'running');
@@ -32,6 +33,7 @@ export default function RenderProgress({ contentId, active, onFinish, canStop = 
       setSkew(Date.parse(d.now) - Date.now());
       setP(d.progress);
       if (d.limits) setLimits(d.limits);
+      setGh(d.github || null);
       const st = d.progress?.status;
       if (prevStatus.current && (prevStatus.current === 'running' || prevStatus.current === 'queued') && (st === 'done' || st === 'failed' || st === 'canceled')) onFinish();
       prevStatus.current = st;
@@ -113,6 +115,26 @@ export default function RenderProgress({ contentId, active, onFinish, canStop = 
       {p.status === 'canceled' && <div className="check warn">■ {p.error || '중지됨'} — 다시 하려면 [다시 렌더]를 누르세요.</div>}
       {p.status === 'done' && p.result && <div className="check ok">✓ {p.result.total_sec}초 영상 · {p.result.approved ? '자동 승인됨' : '검수 대기 — 아래 영상 확인 후 승인'}</div>}
       {warn && <div className="check warn">! {warn}</div>}
+      {gh && (live || gh.log_tail) && (
+        <div className={`rp-gh ${gh.state}`}>
+          <b>GitHub</b> {gh.message}
+          {gh.run_url && <> · <a href={gh.run_url} target="_blank" rel="noreferrer">실행 화면 ↗</a></>}
+          {!!gh.blocking?.length && <div className="small">막고 있는 실행: {gh.blocking.map((b: any) => <a key={b.url} href={b.url} target="_blank" rel="noreferrer" style={{ marginRight: 8 }}>{b.status} ↗</a>)}</div>}
+          {!!gh.log_tail?.length && (
+            <>
+              <div className="small" style={{ marginTop: 6 }}><b>실패한 단계 로그 (끝부분)</b> — 이 내용을 그대로 복사해 물어보면 원인을 바로 찾을 수 있습니다</div>
+              <pre className="rp-ghlog">{gh.log_tail.join('\n')}</pre>
+            </>
+          )}
+          {!!gh.steps?.length && (
+            <ol className="rp-ghsteps">
+              {gh.steps.filter((x: any) => !/^(Set up job|Complete job|Post )/.test(x.name)).map((x: any, i: number) => (
+                <li key={i} className={x.conclusion || x.status}>{x.conclusion === 'success' ? '✓' : x.conclusion === 'failure' ? '✕' : x.conclusion === 'skipped' ? '–' : x.status === 'in_progress' ? <i className="spin" /> : '○'} {x.name}</li>
+              ))}
+            </ol>
+          )}
+        </div>
+      )}
 
       <div className="rp-grid">
         {/* 단계 목록 */}
@@ -199,7 +221,7 @@ export default function RenderProgress({ contentId, active, onFinish, canStop = 
         .rp .rp-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin-bottom:10px}
         .rp .rp-title{font-size:18px;font-weight:800;display:flex;align-items:center;gap:8px}
         .rp .rp-badge{font-size:12px;font-weight:700;padding:2px 8px;border-radius:99px;background:#e8eefc;color:#2b55c9}
-        .rp .rp-stop{margin-left:6px;background:#d6282e;color:#fff;border:0;border-radius:8px;padding:5px 12px;font-size:13px;font-weight:700;cursor:pointer}
+        .rp .rp-stop,#tpf-admin .rp .rp-stop{margin-left:6px;background:#d6282e!important;color:#fff!important;border:0!important;border-radius:8px;padding:5px 12px;font-size:13px;font-weight:700;cursor:pointer}
         .rp .rp-stop:disabled{opacity:.6}
         .rp .warnc{color:#b45309}
         .rp.canceled .rp-pct{color:#64748b}
@@ -241,6 +263,12 @@ export default function RenderProgress({ contentId, active, onFinish, canStop = 
         .rp .sc .tx{min-width:0}.rp .ellip{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
         .rp .sc audio{height:28px;width:150px}
         .rp .rp-stills{display:flex;gap:6px;margin-top:6px}.rp .rp-stills img{height:120px;border-radius:6px;display:block}
+        .rp .rp-gh{border:1px solid #c9d7f5;background:#f4f7ff;border-radius:8px;padding:8px 12px;font-size:13px;margin-bottom:8px}
+        .rp .rp-gh.not_found,.rp .rp-gh.error{border-color:#f2a3a3;background:#fff3f3}
+        .rp .rp-gh.waiting{border-color:#f0c36d;background:#fff9ec}
+        .rp .rp-ghlog{background:#0b1220;color:#fca5a5;font:11px/1.5 ui-monospace,Menlo,monospace;border-radius:6px;padding:8px;max-height:260px;overflow:auto;white-space:pre-wrap;margin:4px 0 0;user-select:text}
+        .rp .rp-ghsteps{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;color:#475569}
+        .rp .rp-ghsteps .success{color:#1c7c43}.rp .rp-ghsteps .failure{color:#c62828;font-weight:700}.rp .rp-ghsteps .in_progress{color:#2b6cdf;font-weight:700}
         .rp .rp-log{background:#0b1220;color:#cbd5e1;font:12px/1.55 ui-monospace,Menlo,monospace;border-radius:8px;padding:10px;max-height:260px;overflow:auto;margin-top:6px}
         .rp .rp-log .t{color:#64748b;margin-right:8px}.rp .rp-log .s{color:#7fa8ff;margin-right:8px;display:inline-block;min-width:76px}
         .rp .rp-log .warn{color:#fcd34d}.rp .rp-log .error{color:#fca5a5}

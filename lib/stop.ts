@@ -157,3 +157,68 @@ export async function reapStale(force = false) {
   }
   return { steps, renders };
 }
+
+// ── GitHub 실행 상태 조회 (렌더가 '요청 접수'·'서버 준비'에서 멈춰 보일 때 원인 표시) ──
+const ghCache = new Map<string, { at: number; v: GhInfo }>();
+export type GhInfo = {
+  state: 'not_found' | 'queued' | 'waiting' | 'in_progress' | 'completed' | 'error';
+  message: string; run_url?: string; conclusion?: string | null;
+  steps?: { name: string; status: string; conclusion: string | null }[];
+  failed_step?: string; log_tail?: string[];
+  blocking?: { url: string; title: string; status: string }[];
+};
+
+/**
+ * 이 렌더(job)의 GitHub Actions 실행을 찾아 상태·단계 목록을 돌려줌 (8초 캐시).
+ * 못 찾으면: Actions 꺼짐 / 워크플로가 기본 브랜치에 없음 / 아직 생성 전 / 같은 콘텐츠의 이전 실행이 막고 있음 을 구분해 안내.
+ */
+export async function ghRunInfo(p: Partial<RenderProgress>, contentId: string): Promise<GhInfo> {
+  const key = String(p.job || '');
+  const c = ghCache.get(key);
+  if (c && Date.now() - c.at < 8000) return c.v;
+  const put = (v: GhInfo) => { ghCache.set(key, { at: Date.now(), v }); return v; };
+  try {
+    const r = await gh(`/actions/runs?per_page=40&event=repository_dispatch`);
+    if (!r.ok) return put({ state: 'error', message: `GitHub 실행 목록 조회 실패 ${r.status} — 토큰에 Actions: Read 권한이 필요합니다` });
+    const runs: any[] = (await r.json()).workflow_runs || [];
+    const mine = runs.find((x) => String(x.display_title || '').includes(key));
+    // 같은 콘텐츠의 끝나지 않은 다른 실행 (동시 실행 방지 때문에 새 실행이 기다림)
+    const blocking = runs.filter((x) => x !== mine && x.status !== 'completed' && String(x.display_title || '').includes(contentId))
+      .map((x) => ({ url: x.html_url, title: x.display_title, status: x.status }));
+    if (!mine) {
+      const age = p.requested_at ? (Date.now() - Date.parse(p.requested_at)) / 1000 : 0;
+      if (age < 25) return put({ state: 'not_found', message: 'GitHub 이 실행을 만드는 중…' });
+      const wr = await gh(`/actions/workflows`);
+      const wf = wr.ok ? ((await wr.json()).workflows || []).find((w: any) => w.name === 'factory') : null;
+      const hint = !wf ? "저장소 기본 브랜치에 .github/workflows/factory.yml 이 없습니다 — 이 프로젝트 코드를 기본 브랜치에 올리세요"
+        : wf.state !== 'active' ? `워크플로 'factory' 가 꺼져 있습니다(${wf.state}) — GitHub 저장소 > Actions > factory > Enable workflow`
+        : '저장소 Settings > Actions > General 에서 Actions 허용(Allow all actions) 여부, 결제·사용 한도를 확인하세요';
+      return put({ state: 'not_found', message: `${Math.round(age)}초가 지나도 GitHub 에 실행이 생기지 않음 — ${hint}`, blocking });
+    }
+    const info: GhInfo = { state: mine.status === 'completed' ? 'completed' : mine.status === 'in_progress' ? 'in_progress' : ['waiting', 'pending', 'requested'].includes(mine.status) ? 'waiting' : 'queued', message: '', run_url: mine.html_url, conclusion: mine.conclusion, blocking };
+    if (info.state === 'waiting' || (info.state === 'queued' && blocking.length)) info.message = blocking.length ? `같은 콘텐츠의 이전 실행 ${blocking.length}개가 끝나길 기다리는 중 — 필요 없으면 GitHub 에서 취소하세요` : 'GitHub 대기 중 (승인·동시 실행 제한)';
+    else if (info.state === 'queued') info.message = 'GitHub 이 렌더 서버(러너)를 배정하는 중 — 보통 10초~1분';
+    else if (info.state === 'completed') info.message = `GitHub 실행이 끝남 (${mine.conclusion})${mine.conclusion !== 'success' ? ' — 실행 화면에서 실패 단계 로그를 확인하세요' : ''}`;
+    else info.message = 'GitHub 렌더 서버에서 실행 중';
+    if (info.state === 'in_progress' || info.state === 'completed') {
+      const jr = await gh(`/actions/runs/${mine.id}/jobs`);
+      const job = jr.ok ? ((await jr.json()).jobs || [])[0] : null;
+      if (job) info.steps = (job.steps || []).map((s: any) => ({ name: s.name, status: s.status, conclusion: s.conclusion }));
+      // 실패면 실패한 단계 + 로그 끝부분 (오류 줄 위주)
+      if (job && mine.conclusion === 'failure') {
+        info.failed_step = (job.steps || []).find((s: any) => s.conclusion === 'failure')?.name;
+        const lr = await gh(`/actions/jobs/${job.id}/logs`).catch(() => null);
+        if (lr?.ok) {
+          const lines = (await lr.text()).split('\n').map((l) => l.replace(/^\d{4}-\d\d-\d\dT[\d:.]+Z\s?/, '').replace(/\x1b\[[0-9;]*m/g, '')).filter((l) => l.trim() && !/^##\[(endgroup|group\]Post)/.test(l));
+          const end = lines.findIndex((l) => /Process completed with exit code|##\[error\]/.test(l));
+          const upto = end >= 0 ? lines.slice(0, end + 1) : lines;
+          info.log_tail = upto.slice(-30).map((l) => l.slice(0, 300));
+        }
+        info.message = `GitHub 실행 실패 — 단계: ${info.failed_step || '?'}`;
+      }
+    }
+    return put(info);
+  } catch (e: any) {
+    return put({ state: 'error', message: `GitHub 조회 실패: ${e.message}` });
+  }
+}

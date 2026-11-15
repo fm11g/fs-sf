@@ -150,7 +150,25 @@ let current: Progress | null = null;
 export const setCurrent = (p: Progress | null) => (current = p);
 /** main.ts 의 실패 처리에서 호출 — 진행 화면에 실패 단계와 사유 표시 */
 export async function failCurrent(msg: string, kind?: 'user' | 'timeout') {
-  if (!current || current.p.status === 'done' || current.p.status === 'canceled') return;
+  if (!current) return failEarly(msg, kind);
+  if (current.p.status === 'done' || current.p.status === 'canceled') return;
   if (kind === 'user') await current.cancel(msg); else await current.fail(kind === 'timeout' ? `⏱ ${msg}` : msg);
 }
 export const getCurrent = () => current;
+
+/**
+ * 진행 기록(Progress.start) 전에 실패한 경우 — 예: 키 로딩·콘텐츠 읽기·대사/디자인 없음.
+ * 같은 요청(job) 기록에 실제 사유를 남김 (그 뒤 워크플로의 '렌더 서버에서 실패' 기록은 DB 함수가 무시)
+ */
+async function failEarly(msg: string, kind?: 'user' | 'timeout') {
+  const cid = process.env.CONTENT_ID;
+  if (!cid || process.env.MODE !== 'render') return;
+  const t = new Date().toISOString();
+  const patch = {
+    job: process.env.RENDER_JOB || '', status: kind === 'user' ? 'canceled' : 'failed', stage: 'setup', error: msg, finished_at: t,
+    stages: { queue: { state: 'done', pct: 100 }, setup: { state: 'failed', pct: 100, detail: msg } },
+    log_add: [{ t, stage: 'setup', msg: `워커 시작 중 실패: ${msg}`, level: 'error' }],
+  };
+  const { error } = await db.rpc('render_progress_patch', { cid, patch });
+  if (error) console.warn('실패 사유 기록 실패:', error.message);
+}

@@ -50,7 +50,7 @@ export default function StopBar({ label, startedAt, limitSec, canStop, onStop, e
         .stopbar .sb-track{height:4px;background:#e2e8f0;border-radius:2px;margin-top:6px;overflow:hidden}
         .stopbar .sb-track i{display:block;height:100%;background:#2b6cdf;transition:width 1s linear}
         .stopbar.hot .sb-track i{background:#e0a106}.stopbar.late .sb-track i{background:#d6282e}
-        .stopbar button.danger{background:#d6282e;color:#fff;border:0;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;flex:none}
+        .stopbar button.danger,#tpf-admin .stopbar button.danger{background:#d6282e!important;color:#fff!important;border:0!important;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;flex:none}
         .stopbar button.danger:disabled{opacity:.6}
       `}</style>
     </div>

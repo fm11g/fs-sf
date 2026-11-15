@@ -4,7 +4,7 @@ import { dispatch } from '@/lib/github';
 import { requireApproved } from '@/lib/pipeline';
 import { sbAdmin } from '@/lib/supabase/server';
 import { newProgress } from '@/worker/video/stages';
-import { reapStale } from '@/lib/stop';
+import { ghRunInfo, reapStale } from '@/lib/stop';
 import { limitsOf } from '@/lib/limits';
 import { getSettings } from '@/lib/settings';
 import { hydrateEnv } from '@/lib/secrets';
@@ -80,5 +80,11 @@ export async function GET(req: NextRequest) {
   const { data, error } = await sbAdmin().from('contents').select('status, video_url, render_progress').eq('id', id).single();
   if (error) return NextResponse.json({ error: error.message }, { status: 404 });
   const limits = limitsOf(await getSettings().catch(() => ({})));
-  return NextResponse.json({ progress: data.render_progress, status: data.status, video_url: data.video_url, now: new Date().toISOString(), limits });
+  // 아직 워커가 시작 전(요청 접수·서버 준비)이면 GitHub 실행 상태를 직접 보여 줌
+  const rp: any = data.render_progress;
+  let github = null;
+  if (rp && (rp.status === 'queued' || (rp.status === 'running' && rp.stage === 'setup') || (rp.status === 'failed' && rp.stage === 'setup') || req.nextUrl.searchParams.get('gh') === '1')) {
+    github = await ghRunInfo(rp, id).catch(() => null);
+  }
+  return NextResponse.json({ progress: rp, status: data.status, video_url: data.video_url, now: new Date().toISOString(), limits, github });
 }

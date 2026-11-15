@@ -1,0 +1,10 @@
+node_modules
+.next
+.env*
+!.env.example
+!.env.tpf.example
+worker/out
+worker/node_modules
+.vercel
+
+# 비밀값이 들어간 연결용 파일

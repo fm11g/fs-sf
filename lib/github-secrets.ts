@@ -56,6 +56,29 @@ export async function putRepoSecrets(repo: string, token: string, secrets: Recor
 }
 
 /** 저장소 접근·권한 확인 */
+/**
+ * factory.yml 이 어디 있는지 찾아 정확한 원인을 알려 줌
+ *  · 저장소 맨 바깥 .github/workflows/ 가 아닌 하위 폴더에 있음 (폴더째 업로드)
+ *  · 파일은 있는데 YAML 오류로 GitHub 이 이름을 못 읽음
+ *  · 다른 브랜치에만 있음 / 아예 없음
+ */
+async function whereIsFactory(repo: string, token: string, branch: string, wfs: any[]) {
+  const atRoot = wfs.find((x: any) => String(x.path || '').endsWith('workflows/factory.yml'));
+  if (atRoot) return `.github/workflows/factory.yml 은 있지만 GitHub 이 '${atRoot.name}' 으로 읽음 (state: ${atRoot.state}) — YAML 문법 오류일 수 있음. 저장소 Actions 탭에서 오류 메시지를 확인하고, 받은 factory.yml 원본으로 다시 덮어쓰세요`;
+  const t = await fetch(`${api()}/repos/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`, { headers: hdr(token) });
+  const tj: any = await t.json().catch(() => ({}));
+  const paths: string[] = (tj.tree || []).map((x: any) => x.path);
+  const nested = paths.find((p) => p.endsWith('.github/workflows/factory.yml'));
+  const top = Array.from(new Set(paths.filter((p) => !p.includes('/')))).slice(0, 12).join(', ');
+  if (nested) {
+    const dir = nested.replace(/\/?\.github\/workflows\/factory\.yml$/, '');
+    return `factory.yml 이 '${nested}' 에 있음 — '${dir}/' 폴더째 올라가서 GitHub 이 못 찾습니다. '${dir}' 폴더 '안의 내용'이 저장소 맨 바깥에 오도록 다시 올리세요 (업로드 스크립트를 쓰면 자동으로 맞춰짐)`;
+  }
+  if (!paths.length) return `${branch} 브랜치가 비어 있거나 읽을 수 없음 — 코드를 ${branch} 브랜치에 올리세요`;
+  const hasWorker = paths.some((p) => p.startsWith('worker/'));
+  return `${branch} 브랜치에 .github/workflows/factory.yml 이 없음 (맨 바깥: ${top || '-'})${hasWorker ? ' — worker/ 는 있는데 숨김 폴더 .github 만 빠졌습니다. Finder 에서 끌어다 올리면 빠짐 → [Add file → Create new file] 로 .github/workflows/factory.yml 을 만들거나 업로드 스크립트를 쓰세요' : ' — 다른 브랜치에 올렸다면 main 으로 옮기세요'}`;
+}
+
 /** 연결 확인 — 저장소 접근 · 워크플로(factory) 존재 · 워커용 Secrets 2개 등록 여부까지 */
 export async function checkRepo(repo: string, token: string) {
   const t = await checkToken(token);
@@ -71,7 +94,7 @@ export async function checkRepo(repo: string, token: string) {
   const sj: any = await sr.json().catch(() => ({}));
   const secrets: string[] | null = sr.ok ? (sj.secrets || []).map((x: any) => x.name) : null;
   const problems: string[] = [];
-  if (!workflows.includes('factory')) problems.push(`워크플로 'factory' 가 없음 — 이 프로젝트 코드(.github/workflows/factory.yml)를 기본 브랜치(${j.default_branch})에 올려야 렌더가 돕니다`);
+  if (!workflows.includes('factory')) problems.push(await whereIsFactory(repo, token, j.default_branch, w.workflows || []));
   if (secrets === null) problems.push('Secrets 목록을 읽지 못함 — 토큰에 Secrets: Read and write 권한 필요');
   else for (const k of ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']) if (!secrets.includes(k)) problems.push(`GitHub Secret '${k}' 없음 — [워커에 적용]을 누르세요`);
   if (j.permissions && j.permissions.push === false) problems.push('토큰에 쓰기 권한 없음 — Contents: Read and write 필요 (렌더 요청에 필요)');

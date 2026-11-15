@@ -1,0 +1,6 @@
+# Codex 프로젝트 설정 — 신뢰(trust)한 프로젝트에서만 읽힙니다.
+# url 은 실제 배포 주소로 바꾸고, 셸에 MCP_TOKEN 환경변수를 설정하세요.
+[mcp_servers.tpf]
+url = "https://YOUR-SITE.vercel.app/api/mcp"
+bearer_token_env_var = "MCP_TOKEN"
+tool_timeout_sec = 300

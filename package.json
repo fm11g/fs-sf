@@ -35,5 +35,8 @@
   },
   "bin": {
     "tpf": "bin/tpf.mjs"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

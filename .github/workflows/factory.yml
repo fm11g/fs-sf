@@ -1,0 +1,90 @@
+name: factory
+# 실행 제목에 렌더 요청값(job)을 넣어, 대기 중인 실행도 사이트의 [중지]가 찾아 취소할 수 있게 함
+run-name: "${{ github.event.action || inputs.mode || 'daily' }} ${{ github.event.client_payload.job || '' }} ${{ github.event.client_payload.content_id || inputs.content_id || '' }}"
+
+on:
+  schedule:
+    - cron: '10 21 * * *'   # 매일 06:10 KST (설정 daily_enabled 로 on/off)
+  repository_dispatch:
+    types: [factory, render, publish, channels, reference]
+  workflow_dispatch:
+    inputs:
+      mode: { description: 'factory | render | publish | channels | daily | reference', default: 'factory', required: true }
+      content_id: { description: '콘텐츠 ID (factory는 비우면 새로 생성)', required: false }
+      topic: { description: '주제 힌트', required: false }
+      ref_id: { description: '참고 영상 번호 (reference)', required: false }
+
+concurrency:
+  group: factory-${{ github.event.client_payload.content_id || inputs.content_id || github.event.client_payload.ref_id && format('ref-{0}', github.event.client_payload.ref_id) || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: worker
+    env:
+      MODE: ${{ github.event_name == 'schedule' && 'daily' || github.event_name == 'workflow_dispatch' && inputs.mode || github.event.action }}
+      CONTENT_ID: ${{ github.event.client_payload.content_id || inputs.content_id }}
+      TOPIC: ${{ github.event.client_payload.topic || inputs.topic }}
+      TARGETS_JSON: ${{ toJSON(github.event.client_payload.targets) }}
+      REF_ID: ${{ github.event.client_payload.ref_id || inputs.ref_id }}
+      RENDER_JOB: ${{ github.event.client_payload.job }}   # 렌더 진행 기록 구분용 (관리자 [렌더 시작]이 만든 값)
+      # 꼭 필요한 것은 이 두 개뿐 — 나머지 키는 관리자 [연결·키]에 저장된 값을 워커가 Supabase 에서 읽는다
+      # (관리자 [연결·키] → [워커에 적용] 버튼이 이 두 Secret 을 자동 등록)
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      # 아래는 예전 방식(선택). 관리자 페이지에 같은 키가 있으면 그 값이 우선
+      SITE_URL: ${{ secrets.SITE_URL }}
+      WORKER_SECRET: ${{ secrets.WORKER_SECRET }}
+      FISH_AUDIO_API_KEY: ${{ secrets.FISH_AUDIO_API_KEY }}
+      YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+      YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
+      YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
+      YT_API_KEY: ${{ secrets.YT_API_KEY }}
+      IG_USER_ID: ${{ secrets.IG_USER_ID }}
+      IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+      GRAPH_VERSION: ${{ secrets.GRAPH_VERSION }}
+      IG_GRAPH_HOST: ${{ secrets.IG_GRAPH_HOST }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: 진행 기록 — 서버 배정
+        run: bash scripts/progress.sh 8 "렌더 서버 배정됨 · 코드 받음"
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }   # @supabase/supabase-js 최신판은 Node 22+ 기본 WebSocket 필요 (20 이면 시작하자마자 실패)
+      - name: 참고 영상 분석 도구 (yt-dlp · ffmpeg)
+        if: env.MODE == 'reference'
+        working-directory: .
+        run: |
+          command -v ffmpeg || (sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg)
+          pipx install yt-dlp || python3 -m pip install -q --user --break-system-packages -U yt-dlp
+          yt-dlp --version
+      - name: Chrome 의존성 + 한글 폰트
+        if: env.MODE != 'reference'
+        run: |
+          bash scripts/progress.sh 15 "Chrome 의존성·한글 폰트 설치 중"
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq fonts-noto-cjk libnss3 libdbus-1-3 libatk1.0-0 libgbm-dev libasound2t64 \
+            libxrandr2 libxkbcommon-dev libxfixes3 libxcomposite1 libxdamage1 libatk-bridge2.0-0 libpango-1.0-0 libcairo2 libcups2
+      - name: Remotion 캐시
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.npm
+            worker/node_modules/.remotion
+          key: remotion-${{ hashFiles('worker/package.json') }}
+      - run: bash scripts/progress.sh 40 "패키지 설치 중 (Remotion 등)" && npm install --no-audit --no-fund
+      - run: bash scripts/progress.sh 65 "영상 폰트 받는 중 (Pretendard 외 굵기별)" && bash scripts/fonts.sh
+        if: env.MODE != 'reference'
+      - run: bash scripts/progress.sh 85 "렌더용 브라우저 준비 중" && npx remotion browser ensure
+        if: env.MODE != 'reference'
+      - run: npx tsx src/main.ts
+      - name: 진행 기록 — 실패
+        if: failure()
+        run: bash scripts/progress.sh 100 "렌더 서버에서 실패 — GitHub Actions 로그를 확인하세요" failed
+      - name: 실패 시 결과물 보관
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with: { name: out, path: worker/out, if-no-files-found: ignore }

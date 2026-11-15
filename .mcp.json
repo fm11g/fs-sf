@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "tpf": {
+      "type": "http",
+      "url": "${TPF_URL}/api/mcp",
+      "headers": { "Authorization": "Bearer ${MCP_TOKEN}" }
+    }
+  }
+}
