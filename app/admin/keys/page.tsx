@@ -8,7 +8,8 @@ const SRC = { admin: '관리자 입력', env: 'Vercel 환경변수', none: '비�
 
 export default function Keys() {
   const [d, setD] = useState<any>(null);
-  const [vals, setVals] = useState<Record<string, string>>({});
+  // 값: 문자열 = 새 값, null = 지우기 (빈칸은 '변경 없음')
+  const [vals, setVals] = useState<Record<string, string | null>>({});
   const [show, setShow] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState('');
   const [note, setNote] = useState('');
@@ -16,16 +17,35 @@ export default function Keys() {
   const load = () => api('/api/keys').then(setD).catch((e) => setNote(e.message));
   useEffect(() => { load(); setQ(new URLSearchParams(location.search)); }, []);
 
-  const dirty = Object.keys(vals).filter((k) => vals[k] !== undefined);
+  const changes = () => Object.fromEntries(Object.entries(vals).filter(([, v]) => v === null || (typeof v === 'string' && v.trim() !== '')).map(([k, v]) => [k, v === null ? '' : v]));
+  const dirty = Object.keys(changes());
+  // 저장 안 한 값이 있으면 페이지를 떠날 때 경고
+  useEffect(() => {
+    if (!dirty.length) return;
+    const h = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', h);
+    return () => window.removeEventListener('beforeunload', h);
+  }, [dirty.length]);
+  /** 저장 — 저장된 비밀값의 끝 4자리를 바로 보여 줌 (GitHub 에서 만든 값과 같은지 확인용) */
+  const saveNow = async (quiet = false) => {
+    const values = changes();
+    if (!Object.keys(values).length) return true;
+    const r = await api('/api/keys', { action: 'save', values });
+    const tails = (r.tails || []).map((t: any) => `${t.key} …${t.tail}`).join(', ');
+    setNote(`저장됨: ${r.saved.join(', ') || '-'}${tails ? ` (${tails})` : ''}${r.removed.length ? ` · 지움: ${r.removed.join(', ')}` : ''} — 바로 적용됩니다`);
+    setVals({}); await load();
+    return !quiet || true;
+  };
   const save = async () => {
     setBusy('save');
-    try { const r = await api('/api/keys', { action: 'save', values: vals }); setNote(`저장됨: ${r.saved.join(', ') || '-'}${r.removed.length ? ` · 지움: ${r.removed.join(', ')}` : ''} — 바로 적용됩니다 (재배포 필요 없음)`); setVals({}); load(); }
-    catch (e: any) { alert(e.message); }
+    try { await saveNow(); } catch (e: any) { alert(e.message); }
     setBusy('');
   };
   const act = async (action: string, extra: any = {}) => {
     setBusy(action);
     try {
+      // GitHub 버튼: 입력만 하고 저장 안 한 저장소·토큰이 있으면 먼저 저장 (예전 토큰으로 시험하지 않게)
+      if ((action === 'test_github' || action === 'sync_github') && dirty.length) await saveNow(true);
       const r = await api('/api/keys', { action, ...extra });
       if (action === 'sync_github') setNote(`GitHub Secrets 등록 완료: ${r.done.join(', ')} — 이제 워커가 나머지 키를 여기서 읽습니다`);
       if (action === 'test_github') setNote(r.error ? `연결 실패: ${r.error}`
@@ -82,8 +102,8 @@ export default function Keys() {
             <h2 style={{ margin: 0 }}>{g.group} <span className="mute" style={{ fontWeight: 400, fontSize: 13 }}>{g.desc}</span></h2>
             <div className="row">
               {g.group === '워커(GitHub)' && <>
-                <button disabled={!!busy} onClick={() => act('test_github')}>{busy === 'test_github' ? '확인 중…' : '연결 확인'}</button>
-                <button className="acc" disabled={!!busy} onClick={() => act('sync_github')}>{busy === 'sync_github' ? '등록 중…' : '워커에 적용 (GitHub Secrets 자동 등록)'}</button>
+                <button disabled={!!busy} onClick={() => act('test_github')}>{busy === 'test_github' ? '확인 중…' : dirty.length ? '저장하고 연결 확인' : '연결 확인'}</button>
+                <button className="acc" disabled={!!busy} onClick={() => act('sync_github')}>{busy === 'sync_github' ? '등록 중…' : dirty.length ? '저장하고 워커에 적용' : '워커에 적용 (GitHub Secrets 자동 등록)'}</button>
               </>}
               {g.group === '유튜브' && <a href="/api/oauth/youtube"><button>유튜브 계정 연결</button></a>}
               {g.group === '이메일 알림' && <a href="/admin/settings"><button>알림 받을 주소·테스트 메일 →</button></a>}
@@ -107,18 +127,21 @@ export default function Keys() {
                   <Input
                     type={k.secret && !show[k.key] && !k.multiline ? 'password' : 'text'}
                     placeholder={k.preview ? `${k.preview}  (바꾸려면 새 값 입력)` : k.placeholder || ''}
-                    value={editingVal ?? ''}
+                    value={typeof editingVal === 'string' ? editingVal : ''}
                     rows={k.multiline ? 3 : undefined}
                     onChange={(e: any) => setVals({ ...vals, [k.key]: e.target.value })}
+                    style={typeof editingVal === 'string' && editingVal.trim() ? { borderColor: '#e0a106', background: '#fffbeb' } : undefined}
                     autoComplete="off"
                   />
+                  {typeof editingVal === 'string' && editingVal.trim() && <div style={{ fontSize: 12, marginTop: 2, color: '#b45309', fontWeight: 600 }}>● 아직 저장 안 됨{k.secret ? ` — 저장하면 끝 4자리가 …${editingVal.trim().slice(-4)} 로 바뀝니다` : ''}</div>}
+                  {editingVal === null && <div style={{ fontSize: 12, marginTop: 2, color: '#c62828', fontWeight: 600 }}>● 저장하면 이 값이 지워집니다 <a href="#" onClick={(e) => { e.preventDefault(); const n = { ...vals }; delete n[k.key]; setVals(n); }}>취소</a></div>}
                   {k.help && <div className="mute" style={{ fontSize: 12, marginTop: 2 }}>{k.help}</div>}
                 </div>
                 <div style={{ display: 'grid', gap: 4, justifyItems: 'start' }}>
                   <span className={`src ${k.source}`}>{SRC[k.source]}</span>
                   <div className="row" style={{ gap: 4 }}>
                     {k.secret && !k.multiline && <a href="#" className="mute" style={{ fontSize: 12 }} onClick={(e) => { e.preventDefault(); setShow({ ...show, [k.key]: !show[k.key] }); }}>{show[k.key] ? '가리기' : '보이기'}</a>}
-                    {k.source === 'admin' && !k.auto && <a href="#" className="mute" style={{ fontSize: 12 }} onClick={(e) => { e.preventDefault(); if (confirm(`${k.label} 값을 지울까요?`)) setVals({ ...vals, [k.key]: '' }); }}>지우기</a>}
+                    {k.source === 'admin' && !k.auto && <a href="#" className="mute" style={{ fontSize: 12 }} onClick={(e) => { e.preventDefault(); if (confirm(`${k.label} 값을 지울까요?`)) setVals({ ...vals, [k.key]: null }); }}>지우기</a>}
                   </div>
                 </div>
               </div>

@@ -105,7 +105,10 @@ function apply(rows: { key: string; value: string }[]) {
 export async function hydrateEnv(force = false) {
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) return;
   if (!force && Date.now() - loadedAt < TTL) return;
-  if (loading) return loading;
+  if (loading) {
+    if (!force) return loading;
+    await loading.catch(() => {}); // 저장 직후 강제 갱신: 진행 중이던(저장 전) 읽기 결과를 쓰지 않고 다시 읽음
+  }
   loading = (async () => {
     try {
       const { data, error } = await sbAdmin().from('app_secrets').select('key, value');
@@ -132,7 +135,8 @@ export async function setSecrets(values: Record<string, string | null>, by: stri
   if (up.length) { const { error } = await db.from('app_secrets').upsert(up); if (error) throw new Error(error.message); }
   if (del.length) await db.from('app_secrets').delete().in('key', del);
   await hydrateEnv(true);
-  return { saved: up.map((x) => x.key), removed: del };
+  const secretKeys = new Set(KEY_DEFS.filter((d) => d.secret).map((d) => d.key));
+  return { saved: up.map((x) => x.key), removed: del, tails: up.filter((x) => secretKeys.has(x.key)).map((x) => ({ key: x.key, tail: String(x.value).slice(-4) })) };
 }
 
 export const genToken = (n = 32) => randomBytes(n).toString('base64url');
