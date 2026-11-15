@@ -8,7 +8,7 @@ import { STEP_DEFS, type StepKey } from '@/lib/steps';
 export const dynamic = 'force-dynamic';
 
 const OUTPUT_FIELDS = ['research', 'plan', 'script', 'offer', 'design', 'copy', 'post'];
-const OTHER = ['topic', 'bgm_id'];
+const OTHER = ['topic', 'bgm_id', 'style_key'];
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   const g = await guard(req, 'board');
@@ -24,7 +24,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   if (g.me.role === 'staff' && content) {
     // 직원: 권한 블록에 있는 단계의 산출물만 (나머지 필드는 아예 빼고 보냄)
     const keys = new Set(visibleSteps(g.me).map((d) => d.key) as string[]);
-    const c: any = { id: content.id, slug: content.slug, topic: content.topic, status: content.status, created_at: content.created_at, reference_id: content.reference_id, error: null };
+    const c: any = { id: content.id, slug: content.slug, topic: content.topic, status: content.status, created_at: content.created_at, reference_id: content.reference_id, style_key: content.style_key, error: null };
     for (const d of STEP_DEFS) if (keys.has(d.key) && d.field) c[d.field] = (content as any)[d.field];
     if (keys.has('render') || keys.has('publish') || can(g.me, 'editor')) Object.assign(c, { audio: content.audio, video_url: content.video_url, thumbnail_url: content.thumbnail_url, images: content.images, bgm_id: content.bgm_id });
     if (keys.has('publish')) Object.assign(c, { youtube_id: content.youtube_id, instagram_id: content.instagram_id, published_at: content.published_at });
@@ -52,6 +52,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     bgm_id: () => canStep(g.me, 'render', 'work'),
     landing_values: () => canStep(g.me, 'landing', 'work'),
     video_edit: () => can(g.me, 'editor', 'work') || canStep(g.me, 'design', 'work'),
+    style_key: () => can(g.me, 'editor', 'work') || canStep(g.me, 'design', 'work'),
   };
   for (const k of Object.keys(body)) {
     const d = STEP_DEFS.find((x) => x.field === k);

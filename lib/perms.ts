@@ -12,6 +12,7 @@ export const BLOCKS: Block[] = [
   { key: 'editorial', label: '편성표', group: '화면', href: '/admin/editorial', desc: '보기: 주간 편성 · 작업: 편성 다시 짜기·슬롯 수정' },
   { key: 'channels', label: '채널 성과', group: '화면', href: '/admin/channels', desc: '보기: 조회·공유·댓글 점수 · 작업: 다시 분석' },
   { key: 'metrics', label: '작업 효율', group: '화면', href: '/admin/metrics', desc: '단계별 시간·재작업률 + API 사용량(플랫폼·모델·토큰·비용) · 이 권한이 없으면 작업대에서도 비용은 숨김' },
+  { key: 'styles', label: '영상 스타일', group: '화면', href: '/admin/styles', desc: '보기: 스타일 프리셋 · 작업: 캡처·링크로 스타일 만들기·기본 스타일 지정' },
   { key: 'references', label: '참고 영상', group: '화면', href: '/admin/references', desc: '보기: 분석 결과 · 작업: 영상 추가·학습 설정·이 영상처럼 만들기' },
   { key: 'sop', label: 'SOP · AI 제어', group: '화면', href: '/admin/sop', desc: '보기: SOP 읽기 · 작업: SOP 수정·학습 반영' },
   { key: 'landing_tpl', label: '랜딩 템플릿', group: '화면', href: '/admin/landing', desc: '보기/작업: 랜딩 HTML 템플릿 + 실제 사례(후기) 목록' },
@@ -26,7 +27,7 @@ export const OWNER_ONLY = ['settings', 'keys', 'members', 'export', 'delete', 'a
 /** 미리 만든 묶음 — 직원 추가 화면에서 한 번에 체크 */
 export const PRESETS: { name: string; perms: Perms }[] = [
   { name: '대본 작가', perms: { board: 'view', 'step:research': 'view', 'step:plan': 'view', 'step:script': 'work' } },
-  { name: '디자이너·편집자', perms: { board: 'view', 'step:script': 'view', 'step:design': 'work', editor: 'work', 'step:render': 'work', references: 'view' } },
+  { name: '디자이너·편집자', perms: { board: 'view', 'step:script': 'view', 'step:design': 'work', editor: 'work', 'step:render': 'work', references: 'view', styles: 'work' } },
   { name: '카피·마케터', perms: { board: 'view', 'step:offer': 'work', 'step:landing': 'work', 'step:copy': 'work', 'step:post': 'work', leads: 'view', channels: 'view' } },
   { name: '검수 담당', perms: Object.fromEntries([['board', 'view'], ...STEP_DEFS.map((d) => [`step:${d.key}`, 'view'])]) as Perms },
 ];

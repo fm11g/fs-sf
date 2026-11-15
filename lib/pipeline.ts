@@ -6,6 +6,8 @@ import { sbAdmin } from './supabase/server';
 import { logUsage } from './usage';
 import { charLen, parseSlots, validate } from './landing';
 import { caseValues, casePositions, isCaseKey, rankCases, type CaseField, type LandingCase } from './cases';
+import { styleFor, type StyleRow } from './styles';
+import { applyStyle, cleanLayers } from './video-style';
 import { getSop, type Sop } from './sop';
 import { getOutput, getSettings } from './settings';
 import { notify } from './notify';
@@ -129,9 +131,18 @@ export function lint(step: StepKey, out: any, c: any, s: Settings, extra: { slot
     const got = (out?.scenes || []).map((x: any) => x.id);
     const miss = ids.filter((i: string) => !got.includes(i));
     if (miss.length) err(`디자인 없는 장면: ${miss.join(', ')}`);
-    const long = (out?.scenes || []).filter((x: any) => charLen(x.headline || '') > 12).length;
-    if (long) warn(`headline 12자 초과 ${long}개`);
-    for (const x of out?.scenes || []) if (x.layout === 'stat' && !/\d/.test(x.value || '')) warn(`${x.id}: stat 장면에 숫자 value 없음`);
+    const news = out?.template === 'news';
+    for (const x of out?.scenes || []) {
+      const lines = String(x.headline || '').split('\n');
+      const maxLine = ['breaking', 'headline', 'cta', 'quote', 'hook'].includes(x.layout) ? 11 : 16;
+      if (lines.some((l: string) => charLen(l) > maxLine)) warn(`${x.id}: 제목 한 줄이 ${maxLine}자를 넘음 (화면에서 줄이 밀림)`);
+      if (lines.length > 3) warn(`${x.id}: 제목이 3줄 넘음`);
+      if (x.layout === 'stat' && !/\d/.test(x.value || '')) warn(`${x.id}: stat 장면에 숫자 value 없음`);
+      if (news && x.layout === 'stat' && !x.source) warn(`${x.id}: 숫자 장면에 출처(source) 없음 — 언론사 톤은 출처 표기`);
+      if (news && /\p{Extended_Pictographic}/u.test(`${x.headline}${x.sub || ''}${(x.items || []).join('')}`)) warn(`${x.id}: 이모지 사용 (언론사 톤에 맞지 않음)`);
+      for (const l of x.layers || []) if (l.y < 240 || l.y > 1420) warn(`${x.id}/${l.id}: 레이어가 안전 영역 밖 (y ${l.y}) — 채널 표시·자막·쇼츠 버튼과 겹칠 수 있음`);
+      if (['compare'].includes(x.layout) && (x.items || []).length !== 2) warn(`${x.id}: compare 는 items 2개`);
+    }
   }
   if (step === 'copy') {
     const y = out?.youtube || {}; const i = out?.instagram || {};
@@ -155,7 +166,7 @@ export function lint(step: StepKey, out: any, c: any, s: Settings, extra: { slot
 const hasError = (c: Check[]) => c.some((x) => x.level === 'error');
 
 // ── 생성: 준비(prepare) → LLM 또는 에이전트 → 마무리(finalize) ─────────
-type Prep = { system: string; prompt: string; webSearch: boolean; maxTokens: number; slots?: any[]; tpl?: any; refs?: number[]; refVideos?: number[]; cases?: LandingCase[]; casePos?: Record<number, CaseField[]> };
+type Prep = { system: string; prompt: string; webSearch: boolean; maxTokens: number; slots?: any[]; tpl?: any; refs?: number[]; refVideos?: number[]; cases?: LandingCase[]; casePos?: Record<number, CaseField[]>; style?: StyleRow };
 type Gen = { output: any; notes: any; usage: Usage; slots?: any[]; provider?: string; model?: string; tried?: any[]; input?: { system: string; prompt: string }; candidates?: number; pred_score?: number | null; judge?: any; refs?: number[] };
 
 /** 이 단계에서 모델(또는 에이전트)이 받을 지시문 전체 */
@@ -187,6 +198,7 @@ async function prepare(step: StepKey, c: any, s: Settings, sop: Sop, feedback?: 
       ctx.casePositions = Object.keys(pos).length;
     }
   }
+  if (step === 'design') prep.style = ctx.style = await styleFor(c);
   if (step === 'research' || step === 'plan') { try { ctx.brief = await editorialBrief(c, step); } catch { /* 편성 없음 */ } }
   prep.system = buildSystem(s, step, sop);
   prep.prompt = USER[step](ctx);
@@ -217,8 +229,15 @@ async function finalize(step: StepKey, c: any, s: Settings, raw: any, prep: Prep
     out.total_chars = (out.scenes || []).reduce((n: number, x: any) => n + charsNoSpace(x.narration), 0);
   }
   if (step === 'design') {
-    if (c.design?.fonts) out.fonts = c.design.fonts; // 관리자가 조정한 폰트·크기 유지
-    if (c.design?.scale) out.scale = c.design.scale;
+    // 스타일 프리셋(색·폰트·굵기·자막·화면 장식)을 그대로 적용 — AI 는 장면 구성·문구·레이어만
+    const st = prep.style || (await styleFor(c));
+    const { caption_label, ticker, ...rest } = out;
+    out = { ...rest, scenes: (out.scenes || []).map((x: any) => ({ ...x, layers: cleanLayers(x.layers) })) };
+    out = applyStyle(out, st.style);
+    out.style_key = st.key;
+    if (st.style.caption.label && typeof caption_label === 'string' && caption_label.trim()) out.caption.label = caption_label.trim().slice(0, 12);
+    if (st.style.chrome.ticker && typeof ticker === 'string' && ticker.trim()) out.chrome.tickerText = ticker.trim().slice(0, 60);
+    if (c.design?.size) out.size = c.design.size; // 편집기에서 바꾼 영상 크기 유지
   }
   if (step === 'copy') {
     const yt = landingLink(s, c.slug, 'youtube');

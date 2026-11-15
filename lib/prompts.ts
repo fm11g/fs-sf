@@ -1,4 +1,6 @@
 import { FONT_NAMES } from './fonts';
+import { LAYER_GUIDE, NEWS_LAYOUT_GUIDE, styleBlock } from './motion-guide';
+import type { StyleSpec } from './video-style';
 import type { Settings } from './types';
 import type { Sop } from './sop';
 import { stepDef, type StepKey } from './steps';
@@ -13,10 +15,9 @@ const ROLE: Record<string, string> = {
   script: '대본 작가. AI 성우가 읽을 40초 내레이션과 자막을 씁니다.',
   offer: '전환 기획자. 영상에서 랜딩으로 넘어온 사람이 신청하게 만드는 이벤트를 설계합니다.',
   landing: '랜딩페이지 카피라이터. 슬롯별 글자수(공백 포함)를 절대 넘기지 않습니다. 줄바꿈은 \\n (글자수 제외).',
-  design: `모션그래픽 디자이너. 1080x1920 세로 화면의 장면별 그래픽을 설계합니다.
-layout: hook(큰 질문/충격 문구), stat(큰 숫자+단위), list(항목 2~4개 순차 등장), compare(2항목 비교), quote(핵심 한 문장), cta(행동 유도).
-motion: pop, slide, typewriter, countup(stat 전용), zoom.
-폰트(이 중에서만): ${FONT_NAMES.join(', ')}.`,
+  design: `방송 뉴스 모션그래픽 디자이너. 1080x1920 세로 숏폼을 언론사처럼 공식적이고 신뢰감 있게 설계합니다.
+장면마다 레이아웃·머리말·제목·출처를 정하고, 필요한 장면에만 모션그래픽 레이어를 얹습니다. 색·폰트·자막 모양은 지정된 스타일을 따릅니다.
+폰트(레이어에 쓸 때 이 중에서만): ${FONT_NAMES.join(', ')}.`,
   copy: '채널 카피라이터. 링크 자리는 반드시 {LINK} 토큰으로 둡니다.',
   post: 'SEO 에디터. 네이버·구글 검색 상위 노출을 노리는 정보성 글을 씁니다.',
 };
@@ -55,7 +56,7 @@ const revise = (prev: any, feedback?: string | null) =>
     ? `\n\n## 재작업 지시 (최우선 반영)\n${feedback}\n\n## 이전 산출물 (지시와 무관한 부분은 유지)\n${J(prev)}`
     : '';
 
-type Ctx = { s: Settings; c: any; prev?: any; feedback?: string | null; recentTopics?: string[]; slots?: any[]; brief?: string; cases?: any[]; casePositions?: number };
+type Ctx = { s: Settings; c: any; prev?: any; feedback?: string | null; recentTopics?: string[]; slots?: any[]; brief?: string; cases?: any[]; casePositions?: number; style?: { key: string; name: string; style: StyleSpec } };
 
 export const USER: Record<string, (x: Ctx) => string> = {
   research: (ctx) => { const { c, prev, feedback, recentTopics } = ctx; return  `오늘 숏폼으로 다룰 정책자금 주제를 조사하세요.
@@ -150,20 +151,30 @@ ${cases.map((x: any) => `- #${x.id} | ${x.industry}${x.years ? ` ${x.years}년�
 ` : ''}
 JSON 스키마: { "values": { "슬롯key": "문구" },${cases?.length ? ' "cases": [사례 id 순서],' : ''} ${AI_NOTES} } — 모든 슬롯 key 를 포함합니다(선택 슬롯은 "" 가능).${revise(prev, feedback)}`,
 
-  design: ({ c, prev, feedback }) => `기획: ${J(c.plan)}
+  design: ({ c, prev, feedback, style }) => {
+    const st = style?.style;
+    const news = (st?.template || 'news') === 'news';
+    return `기획: ${J(c.plan)}
 대본: ${J(c.script)}
+조사(숫자·출처 확인용): ${J({ program: c.research?.program, facts: c.research?.facts })}
 
-장면마다 화면 그래픽을 설계하세요. 자막은 하단에 따로 나가므로 headline 은 핵심 키워드·숫자만.
-headline 12자 이하, sub 20자 이하, items 각 12자 이하. emphasis: headline 안에서 강조색으로 칠할 단어.
+${st ? styleBlock(style.name, st) : ''}
+
+장면마다 화면 그래픽을 설계하세요. 자막은 하단에 따로 나가므로 화면 글자는 핵심 단어·숫자만.
+${news ? NEWS_LAYOUT_GUIDE : 'layout: hook(큰 질문), stat(큰 숫자+단위), list(항목 2~4개), compare(2항목), quote(한 문장), cta(행동 유도). motion: pop, slide, typewriter, countup, zoom.'}
+글자수: headline 한 줄 10자 안팎(최대 2줄, \n), sub 24자 이하, list items 각 18자 이하, kicker 14자 이하, source 30자 이하.
+숫자·기관명·날짜는 조사 산출물에 있는 것만. 출처가 없으면 source 를 비우고 숫자 장면을 만들지 마세요.
+
+${LAYER_GUIDE}
 
 JSON 스키마:
 {
-  "theme": { "bg": "#0B1B3F", "bg2": "#132B63", "accent": "#FFD400", "text": "#FFFFFF", "sub": "#A9BCE6" },
-  "fonts": { "title": "Black Han Sans", "body": "Noto Sans KR" },
-  "scale": { "title": 1, "body": 1, "caption": 1 },
-  "scenes": [{ "id": "s1", "layout": "hook", "headline": "", "sub": "", "items": [], "value": "", "unit": "", "emphasis": [], "motion": "pop", "icon": "이모지 1개(선택)" }],
+  "scenes": [{ "id": "s1", "layout": "${news ? 'breaking' : 'hook'}", "kicker": "", "tag": "", "headline": "", "sub": "", "items": [], "value": "", "unit": "", "emphasis": [], "source": "", "layers": [] }],
+  "caption_label": "하단 자막 라벨 (8자 이내, 예: 정책자금 브리핑 — 스타일에 라벨이 있을 때만)",
+  "ticker": "티커 문구 (스타일이 티커를 쓸 때만, 40자 이내 · 오늘 공고 요약)",
   ${AI_NOTES}
-}${revise(prev, feedback)}`,
+}${revise(prev, feedback)}`;
+  },
 
   copy: ({ s, c, prev, feedback }) => `조사: ${J(c.research)}
 대본: ${J(c.script)}

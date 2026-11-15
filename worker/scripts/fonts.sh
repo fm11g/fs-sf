@@ -9,24 +9,27 @@ FAIL=0
 get() { [ -s "$DIR/$2" ] || curl -fsSL --retry 3 "$BASE/$1" -o "$DIR/$2" || { echo "폰트 받기 실패: $1"; FAIL=$((FAIL+1)); rm -f "$DIR/$2"; }; }
 get "blackhansans/BlackHanSans-Regular.ttf" "BlackHanSans-Regular.ttf"
 get "dohyeon/DoHyeon-Regular.ttf" "DoHyeon-Regular.ttf"
-get "gothica1/GothicA1-Regular.ttf" "GothicA1-Regular.ttf"
-get "gothica1/GothicA1-Bold.ttf" "GothicA1-Bold.ttf"
-get "gothica1/GothicA1-Black.ttf" "GothicA1-Black.ttf"
+for w in Thin ExtraLight Light Regular Medium SemiBold Bold ExtraBold Black; do get "gothica1/GothicA1-$w.ttf" "GothicA1-$w.ttf"; done
 get "notosanskr/NotoSansKR%5Bwght%5D.ttf" "NotoSansKR-VF.ttf"
 get "jua/Jua-Regular.ttf" "Jua-Regular.ttf"
 get "nanumgothic/NanumGothic-Regular.ttf" "NanumGothic-Regular.ttf"
 get "nanumgothic/NanumGothic-Bold.ttf" "NanumGothic-Bold.ttf"
 get "nanumgothic/NanumGothic-ExtraBold.ttf" "NanumGothic-ExtraBold.ttf"
-get "nanummyeongjo/NanumMyeongjo-ExtraBold.ttf" "NanumMyeongjo-ExtraBold.ttf"
+for w in Regular Bold ExtraBold; do get "nanummyeongjo/NanumMyeongjo-$w.ttf" "NanumMyeongjo-$w.ttf"; done
 get "nanumpenscript/NanumPenScript-Regular.ttf" "NanumPenScript-Regular.ttf"
 get "gowundodum/GowunDodum-Regular.ttf" "GowunDodum-Regular.ttf"
 get "sunflower/Sunflower-Bold.ttf" "Sunflower-Bold.ttf"
-get "ibmplexsanskr/IBMPlexSansKR-Bold.ttf" "IBMPlexSansKR-Bold.ttf"
+for w in Thin ExtraLight Light Regular Medium SemiBold Bold; do get "ibmplexsanskr/IBMPlexSansKR-$w.ttf" "IBMPlexSansKR-$w.ttf"; done
 get "notoserifkr/NotoSerifKR%5Bwght%5D.ttf" "NotoSerifKR-VF.ttf"
 get "dongle/Dongle-Bold.ttf" "Dongle-Bold.ttf"
 get "gasoekone/GasoekOne-Regular.ttf" "GasoekOne-Regular.ttf"
 get "hahmlet/Hahmlet%5Bwght%5D.ttf" "Hahmlet-VF.ttf"
+get "gowunbatang/GowunBatang-Regular.ttf" "GowunBatang-Regular.ttf"
+get "gowunbatang/GowunBatang-Bold.ttf" "GowunBatang-Bold.ttf"
+# 프리텐다드 (가변 100~900) — 언론사 템플릿 기본 폰트
+[ -s "$DIR/PretendardVariable.ttf" ] || curl -fsSL --retry 3 "https://raw.githubusercontent.com/orioncactus/pretendard/v1.3.9/packages/pretendard/dist/public/variable/PretendardVariable.ttf" -o "$DIR/PretendardVariable.ttf" || { echo "폰트 받기 실패: Pretendard"; FAIL=$((FAIL+1)); }
 fc-cache -f "$DIR"
 echo "설치된 폰트 파일: $(ls "$DIR" | wc -l) (실패 $FAIL)"
 # 기본 폰트(Noto Sans KR·Black Han Sans)가 없으면 렌더 중단
 [ -s "$DIR/NotoSansKR-VF.ttf" ] && [ -s "$DIR/BlackHanSans-Regular.ttf" ] || exit 1
+[ -s "$DIR/PretendardVariable.ttf" ] || echo "⚠ 프리텐다드 없음 → Noto Sans KR 로 대체되어 렌더됨"

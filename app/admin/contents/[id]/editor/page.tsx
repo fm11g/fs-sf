@@ -4,10 +4,15 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { can, canStep } from '@/lib/perms';
-import { VIDEO_FONTS, googleFontsHref } from '@/lib/fonts';
+import { fontHrefs } from '@/lib/fonts';
 import { useMe } from '../../../MeContext';
-import { buildProps, captionsOf, narrationOf } from '@/worker/video/props';
-import { sceneStarts, type ElKey, type ElStyle } from '@/worker/video/Short';
+import { DEFAULT_FONTS, buildProps, captionsOf, narrationOf } from '@/worker/video/props';
+import { sceneStarts, type ElKey, type ElStyle } from '@/worker/video/common';
+import { NEWS_LAYOUTS, NEWS_THEME } from '@/worker/video/news';
+import { Color, Field, FontSelect, Seg, WeightSelect } from './controls';
+import CaptionPanel from './CaptionPanel';
+import LayerPanel from './LayerPanel';
+import StylePanel from './StylePanel';
 import type { PreviewHandle } from './Preview';
 
 const Preview = dynamic(() => import('./Preview'), { ssr: false, loading: () => <div className="ed-ph">미리보기 불러오는 중…</div> });
@@ -20,23 +25,25 @@ const SIZES = [
   { label: '16:9 가로', w: 1920, h: 1080 },
   { label: '9:16 720p', w: 720, h: 1280 },
 ];
-const LAYOUTS = [['hook', '훅(첫 장면)'], ['stat', '숫자 강조'], ['list', '목록'], ['compare', '비교'], ['quote', '한 문장'], ['cta', '신청 유도']];
+const CLASSIC_LAYOUTS = [['hook', '훅(첫 장면)'], ['stat', '숫자 강조'], ['list', '목록'], ['compare', '비교'], ['quote', '한 문장'], ['cta', '신청 유도']];
 const MOTIONS = [['pop', '튀어나오기'], ['slide', '아래서 올라오기'], ['zoom', '줌인 + 흐림'], ['typewriter', '타자 치기'], ['countup', '숫자 올라가기']];
-const EL_LABEL: Record<ElKey, string> = { icon: '아이콘', stat: '숫자', headline: '제목', sub: '부제', items: '목록 칸', cta: '신청 버튼', caption: '자막' };
-const THEME_LABEL: [string, string][] = [['bg', '배경 위'], ['bg2', '배경 아래'], ['accent', '강조색'], ['text', '제목 글자'], ['sub', '부제 글자']];
+const EL_LABEL: Record<ElKey, string> = { icon: '아이콘', stat: '숫자', headline: '제목', sub: '부제', items: '목록 칸', cta: '신청 버튼', caption: '자막', kicker: '머리말', tag: '태그', source: '출처' };
 
 const DEFAULT_THEME = { bg: '#0B1B3F', bg2: '#132B63', accent: '#FFD400', text: '#FFFFFF', sub: '#A9BCE6' };
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
 
 /** 이 장면에서 화면에 나오는 요소 */
-function elsOf(s: any): ElKey[] {
+function elsOf(s: any, news = false): ElKey[] {
   const out: ElKey[] = [];
-  if (s.icon) out.push('icon');
+  if (news && ['breaking', 'hook'].includes(s.layout)) out.push('tag');
+  if (news && s.kicker) out.push('kicker');
+  if (!news && s.icon) out.push('icon');
   if (s.layout === 'stat') out.push('stat');
   out.push('headline');
   if (s.sub) out.push('sub');
   if (s.layout === 'list' || s.layout === 'compare') out.push('items');
   if (s.layout === 'cta') out.push('cta');
+  if (news && s.source) out.push('source');
   out.push('caption');
   return out;
 }
@@ -52,13 +59,15 @@ export default function VideoEditor({ params }: { params: { id: string } }) {
   const [bgmId, setBgmId] = useState<string | null>(null);
   const [sel, setSel] = useState(0);
   const [el, setEl] = useState<ElKey>('headline');
-  const [tab, setTab] = useState<'scene' | 'el' | 'caption' | 'all'>('scene');
+  const [tab, setTab] = useState<'scene' | 'el' | 'layers' | 'caption' | 'all'>('scene');
+  const [selLayer, setSelLayer] = useState<string | null>(null);
+  const [styleKey, setStyleKey] = useState<string | null>(null);
   const [drag, setDrag] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
   const pv = useRef<PreviewHandle | null>(null);
-  const dragBase = useRef<{ dx: number; dy: number } | null>(null);
+  const dragBase = useRef<{ dx: number; dy: number; layer?: boolean } | null>(null);
 
   const mayEdit = can(me, 'editor', 'work') || canStep(me, 'design', 'work');
   const mayRender = canStep(me, 'render', 'work');
@@ -68,15 +77,16 @@ export default function VideoEditor({ params }: { params: { id: string } }) {
       const content = d.content;
       setC(content);
       const ds = clone(content.design || {});
-      ds.theme = { ...DEFAULT_THEME, ...(ds.theme || {}) };
-      ds.fonts = { title: 'Black Han Sans', body: 'Noto Sans KR', ...(ds.fonts || {}) };
+      const isNews = ds.template === 'news';
+      ds.theme = { ...(isNews ? NEWS_THEME : DEFAULT_THEME), ...(ds.theme || {}) };
+      ds.fonts = { ...(isNews ? DEFAULT_FONTS.news : DEFAULT_FONTS.classic), ...(ds.fonts || {}) };
       ds.scale = { title: 1, body: 1, caption: 1, ...(ds.scale || {}) };
       ds.size = ds.size || { w: 1080, h: 1920 };
       ds.caption = ds.caption || {};
       ds.chrome = { brand: true, date: true, progress: true, backdrop: true, ...(ds.chrome || {}) };
       // 대사 장면마다 디자인 장면이 있도록 (없으면 첫 자막으로 한 문장 장면)
       ds.scenes = (content.script?.scenes || []).map((sc: any) => (ds.scenes || []).find((x: any) => x.id === sc.id) || { id: sc.id, layout: 'quote', headline: sc.captions?.[0] || '', motion: 'pop' });
-      setDesign(ds); setSaved(JSON.stringify(ds)); setBgmId(content.bgm_id ?? null);
+      setDesign(ds); setSaved(JSON.stringify(ds)); setBgmId(content.bgm_id ?? null); setStyleKey(content.style_key ?? ds.style_key ?? null);
     }).catch((e) => setErr(e.message));
     api('/api/bgm').then((d) => setBgms(d.tracks || [])).catch(() => {});
   }, [params.id]);
@@ -127,7 +137,8 @@ export default function VideoEditor({ params }: { params: { id: string } }) {
     setSel(i);
     if (starts[i] != null) pv.current?.seek(starts[i] + 12);
     const s = design.scenes[i];
-    if (!elsOf(s).includes(el)) setEl('headline');
+    if (!elsOf(s, design.template === 'news').includes(el)) setEl('headline');
+    setSelLayer(null);
   };
   const onFrame = useCallback((f: number) => {
     // 재생 중에는 지금 나오는 장면을 따라감 (드래그 중엔 고정)
@@ -138,6 +149,15 @@ export default function VideoEditor({ params }: { params: { id: string } }) {
   }, [starts]);
 
   const onMove = (dx: number, dy: number, done: boolean) => {
+    // 모션 탭에서 레이어를 골랐으면 레이어를 옮김 (x·y = 1080×1920 기준)
+    const L = tab === 'layers' && selLayer ? design.scenes[sel]?.layers?.find((x: any) => x.id === selLayer) : null;
+    if (L) {
+      if (!dragBase.current) { dragBase.current = { dx: L.x, dy: L.y, layer: true }; setPast((p) => [...p.slice(-60), design]); setFuture([]); }
+      const b = dragBase.current;
+      change((d) => { const l = d.scenes[sel].layers.find((x: any) => x.id === selLayer); if (l) { l.x = Math.round(b.dx + dx); l.y = Math.round(b.dy + dy); } }, false);
+      if (done) dragBase.current = null;
+      return;
+    }
     if (!dragBase.current) {
       const e = design.scenes[sel]?.els?.[el] || {};
       dragBase.current = { dx: e.dx || 0, dy: e.dy || 0 };
@@ -151,7 +171,10 @@ export default function VideoEditor({ params }: { params: { id: string } }) {
     }, false);
     if (done) dragBase.current = null;
   };
-  const nudge = (k: 'dx' | 'dy', n: number) => setEl_(el, { [k]: ((g?.els?.[el] as any)?.[k] || 0) + n });
+  const nudge = (k: 'dx' | 'dy', n: number) => {
+    if (tab === 'layers' && selLayer) return setScene((s) => { const l = (s.layers || []).find((x: any) => x.id === selLayer); if (l) l[k === 'dx' ? 'x' : 'y'] += n; });
+    setEl_(el, { [k]: ((g?.els?.[el] as any)?.[k] || 0) + n });
+  };
 
   // 단축키: Ctrl+Z / Ctrl+Shift+Z, 방향키(드래그 모드) 1px · Shift 10px
   useEffect(() => {
@@ -193,10 +216,13 @@ export default function VideoEditor({ params }: { params: { id: string } }) {
   const capLines = captionsOf(sc, g);
   const narr = narrationOf(sc, g);
   const elFont = el === 'headline' || el === 'stat' ? design.fonts.title : design.fonts.body;
+  const news = design.template === 'news';
+  const LAYOUTS = news ? NEWS_LAYOUTS : CLASSIC_LAYOUTS;
+  const sceneDur = props.scenes[sel]?.durationSec || 3;
 
   return (
     <div id="tpf-editor">
-      <link rel="stylesheet" href={googleFontsHref()} />
+      {fontHrefs().map((h) => <link key={h} rel="stylesheet" href={h} />)}
       <div className="row" style={{ justifyContent: 'space-between', marginBottom: 12 }}>
         <div className="row">
           <Link href={`/admin/contents/${params.id}`}>← 작업대</Link>
@@ -229,7 +255,7 @@ export default function VideoEditor({ params }: { params: { id: string } }) {
           <div className="row" style={{ justifyContent: 'center', marginTop: 8 }}>
             <label className="row" style={{ gap: 4 }}><input type="checkbox" checked={drag} onChange={(e) => setDrag(e.target.checked)} /> 화면에서 끌어서 이동</label>
             <select value={el} onChange={(e) => { setEl(e.target.value as ElKey); setTab('el'); }}>
-              {elsOf(g).map((k) => <option key={k} value={k}>{EL_LABEL[k]}</option>)}
+              {elsOf(g, news).map((k) => <option key={k} value={k}>{EL_LABEL[k]}</option>)}
             </select>
             <span className="mute">{drag ? '방향키 1px · Shift+방향키 10px' : '체크하면 선택한 요소를 마우스로 옮깁니다'}</span>
           </div>
@@ -239,7 +265,7 @@ export default function VideoEditor({ params }: { params: { id: string } }) {
         {/* 속성 패널 */}
         <div className="ed-panel card">
           <div className="tabs">
-            {([['scene', '장면'], ['el', '요소'], ['caption', '자막'], ['all', '전체·크기']] as const).map(([k, l]) => (
+            {([['scene', '장면'], ['el', '요소'], ['layers', '모션'], ['caption', '자막'], ['all', '스타일·전체']] as const).map(([k, l]) => (
               <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>
             ))}
           </div>
@@ -247,8 +273,21 @@ export default function VideoEditor({ params }: { params: { id: string } }) {
           {tab === 'scene' && (
             <div className="ed-form">
               <Field label="구성"><select value={g.layout} onChange={(e) => setScene((s) => { s.layout = e.target.value; })}>{LAYOUTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></Field>
-              <Field label="움직임"><select value={g.motion || 'pop'} onChange={(e) => setScene((s) => { s.motion = e.target.value; })}>{MOTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></Field>
-              <Field label="아이콘(이모지)"><input value={g.icon || ''} onChange={(e) => setScene((s) => { s.icon = e.target.value || undefined; })} placeholder="예: 🚨 (비우면 없음)" /></Field>
+              {news ? (
+                <>
+                  <div className="row">
+                    {['breaking', 'hook', 'document'].includes(g.layout) && <Field label="태그"><input value={g.tag || ''} placeholder={g.layout === 'document' ? '공고' : '속보'} onChange={(e) => setScene((s) => { s.tag = e.target.value || undefined; })} style={{ width: 90 }} /></Field>}
+                    <Field label="머리말 (기관·분류)"><input value={g.kicker || ''} placeholder="예: 중소벤처기업진흥공단" onChange={(e) => setScene((s) => { s.kicker = e.target.value || undefined; })} style={{ width: 200 }} /></Field>
+                  </div>
+                  <Field label="출처 (숫자가 나오면 꼭 · 기관 + 문서명)"><input value={g.source || ''} placeholder="예: 중진공 2026년 시설자금 공고" onChange={(e) => setScene((s) => { s.source = e.target.value || undefined; })} /></Field>
+                  {g.layout === 'stat' && <label className="row" style={{ gap: 4 }}><input type="checkbox" checked={g.motion !== 'none'} onChange={(e) => setScene((s) => { s.motion = e.target.checked ? undefined : 'none'; })} /> 숫자 카운트업</label>}
+                </>
+              ) : (
+                <>
+                  <Field label="움직임"><select value={g.motion || 'pop'} onChange={(e) => setScene((s) => { s.motion = e.target.value; })}>{MOTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></Field>
+                  <Field label="아이콘(이모지)"><input value={g.icon || ''} onChange={(e) => setScene((s) => { s.icon = e.target.value || undefined; })} placeholder="예: 🚨 (비우면 없음)" /></Field>
+                </>
+              )}
               {g.layout === 'stat' && (
                 <div className="row">
                   <Field label="숫자"><input value={g.value || ''} onChange={(e) => setScene((s) => { s.value = e.target.value; })} style={{ width: 110 }} /></Field>
@@ -258,12 +297,12 @@ export default function VideoEditor({ params }: { params: { id: string } }) {
               <Field label="제목 (줄바꿈 가능)"><textarea className="txt" rows={2} value={g.headline || ''} onChange={(e) => setScene((s) => { s.headline = e.target.value; })} /></Field>
               <Field label="강조 단어 (쉼표로 구분 · 강조색으로 표시)"><input value={(g.emphasis || []).join(', ')} onChange={(e) => setScene((s) => { s.emphasis = e.target.value.split(',').map((x) => x.trim()).filter(Boolean); })} /></Field>
               <Field label="부제"><textarea className="txt" rows={2} value={g.sub || ''} onChange={(e) => setScene((s) => { s.sub = e.target.value || undefined; })} /></Field>
-              {(g.layout === 'list' || g.layout === 'compare') && (
-                <Field label={g.layout === 'compare' ? '비교 칸 (한 줄에 하나 · 두 번째 칸이 강조)' : '목록 (한 줄에 하나)'}>
+              {['list', 'compare', 'document', 'timeline'].includes(g.layout) && (
+                <Field label={g.layout === 'compare' ? '비교 칸 2줄 "라벨|내용" (두 번째가 강조)' : g.layout === 'timeline' ? '일정 "날짜|내용" 한 줄에 하나 (마지막 = 마감)' : g.layout === 'document' ? '공고 요약 줄 (강조 단어가 든 줄에 형광펜)' : '목록 (한 줄에 하나)'}>
                   <textarea className="txt" rows={4} value={(g.items || []).join('\n')} onChange={(e) => setScene((s) => { s.items = e.target.value.split('\n'); })} onBlur={() => setScene((s) => { s.items = (s.items || []).map((x: string) => x.trim()).filter(Boolean); })} />
                 </Field>
               )}
-              {g.layout === 'cta' && <Field label="버튼 문구"><input value={g.cta || ''} onChange={(e) => setScene((s) => { s.cta = e.target.value || undefined; })} placeholder="👇 고정 댓글 · 프로필 링크" /></Field>}
+              {g.layout === 'cta' && <Field label="버튼 문구"><input value={g.cta || ''} onChange={(e) => setScene((s) => { s.cta = e.target.value || undefined; })} placeholder={news ? "고정 댓글 링크에서 30초 확인" : "👇 고정 댓글 · 프로필 링크"} /></Field>}
               <Field label={`장면 여백 ${Number(g.hold || 0).toFixed(1)}초 (대사 뒤에 더 머무름 · 음수면 줄임)`}>
                 <input type="range" min={-1} max={5} step={0.1} value={g.hold || 0} onChange={(e) => setScene((s) => { s.hold = Number(e.target.value) || undefined; })} />
               </Field>
@@ -283,7 +322,7 @@ export default function VideoEditor({ params }: { params: { id: string } }) {
           {tab === 'el' && (
             <div className="ed-form">
               <Field label="편집할 요소">
-                <div className="row">{elsOf(g).map((k) => <button key={k} className={k === el ? 'pri' : ''} onClick={() => setEl(k)}>{EL_LABEL[k]}</button>)}</div>
+                <div className="row">{elsOf(g, news).map((k) => <button key={k} className={k === el ? 'pri' : ''} onClick={() => setEl(k)}>{EL_LABEL[k]}</button>)}</div>
               </Field>
               <label className="row" style={{ gap: 4 }}><input type="checkbox" checked={!!E.hidden} onChange={(e) => setEl_(el, { hidden: e.target.checked || undefined })} /> 이 장면에서 숨기기</label>
               {el !== 'icon' && (
@@ -291,6 +330,11 @@ export default function VideoEditor({ params }: { params: { id: string } }) {
                   <Field label="글자색"><Color value={E.color || (el === 'stat' ? design.theme.accent : el === 'sub' ? design.theme.sub : el === 'cta' ? design.theme.bg : el === 'caption' ? cap.color || '#ffffff' : design.theme.text)} onChange={(v) => setEl_(el, { color: v })} /></Field>
                   {(el === 'items' || el === 'cta' || el === 'caption') && <Field label="칸 배경색"><Color value={E.bg || (el === 'cta' ? design.theme.accent : '#1a2a55')} onChange={(v) => setEl_(el, { bg: v })} /></Field>}
                   <Field label="글꼴"><FontSelect value={E.font || ''} fallback={el === 'caption' ? cap.font || design.fonts.body : elFont} onChange={(v) => setEl_(el, { font: v || undefined })} /></Field>
+                  <div className="row">
+                    <Field label="굵기"><WeightSelect font={E.font || (el === 'caption' ? cap.font || design.fonts.body : elFont)} value={E.weight} onChange={(v) => setEl_(el, { weight: v })} allowDefault="기본" /></Field>
+                    <Field label="정렬"><Seg value={E.align} options={[['left', '왼쪽'], ['center', '가운데'], ['right', '오른쪽']]} onChange={(v) => setEl_(el, { align: v })} /></Field>
+                  </div>
+                  <Field label={`자간 ${(E.letterSpacing ?? 0).toFixed(3)}em`}><input type="range" min={-0.1} max={0.3} step={0.005} value={E.letterSpacing ?? 0} onChange={(e) => setEl_(el, { letterSpacing: Number(e.target.value) || undefined })} /></Field>
                 </>
               )}
               <Field label={`크기 ${Math.round((E.scale ?? 1) * 100)}%`}>
@@ -314,27 +358,11 @@ export default function VideoEditor({ params }: { params: { id: string } }) {
           )}
 
           {tab === 'caption' && (
-            <div className="ed-form">
-              <Field label={`이 장면 자막 (한 줄 = 한 컷 · 대사 길이에 맞춰 나눠 나옴)`}>
-                <textarea className="txt" rows={5} value={capLines.join('\n')} onChange={(e) => setScene((s) => { s.captions = e.target.value.split('\n'); })} onBlur={() => setScene((s) => { const v = (s.captions || []).map((x: string) => x.trim()).filter(Boolean); s.captions = v.length && v.join('\n') !== (sc.captions || []).join('\n') ? v : undefined; })} />
-              </Field>
-              {g.captions && <button onClick={() => setScene((s) => { delete s.captions; })}>대사 단계 자막으로</button>}
-              <hr />
-              <b>모든 장면 자막 스타일</b>
-              <label className="row" style={{ gap: 4 }}><input type="checkbox" checked={!cap.hidden} onChange={(e) => change((d) => { d.caption.hidden = !e.target.checked || undefined; })} /> 자막 보이기</label>
-              <Field label="글꼴"><FontSelect value={cap.font || ''} fallback={design.fonts.body} onChange={(v) => change((d) => { d.caption.font = v || undefined; })} /></Field>
-              <div className="row">
-                <Field label="글자색"><Color value={cap.color || '#ffffff'} onChange={(v) => change((d) => { d.caption.color = v; })} /></Field>
-                <Field label="박스색"><Color value={(cap.bg || '#000000').slice(0, 7)} onChange={(v) => change((d) => { d.caption.bg = v + 'b8'; })} /></Field>
-              </div>
-              <label className="row" style={{ gap: 4 }}><input type="checkbox" checked={cap.box !== false} onChange={(e) => change((d) => { d.caption.box = e.target.checked ? undefined : false; })} /> 반투명 박스</label>
-              <label className="row" style={{ gap: 4 }}><input type="checkbox" checked={!!cap.stroke} onChange={(e) => change((d) => { d.caption.stroke = e.target.checked || undefined; })} /> 테두리 굵게</label>
-              <Field label={`크기 ${Math.round((cap.size ?? 1) * 100)}%`}><input type="range" min={0.5} max={2} step={0.05} value={cap.size ?? 1} onChange={(e) => change((d) => { d.caption.size = Number(e.target.value); })} /></Field>
-              <Field label={`아래에서 높이 ${cap.bottom ?? '기본'}${cap.bottom != null ? 'px' : ''}`}>
-                <input type="range" min={0} max={1500} step={5} value={cap.bottom ?? 360} onChange={(e) => change((d) => { d.caption.bottom = Number(e.target.value); })} />
-                {cap.bottom != null && <button onClick={() => change((d) => { delete d.caption.bottom; })}>기본 높이</button>}
-              </Field>
-            </div>
+            <CaptionPanel design={design} change={change} scene={g} setScene={setScene} capLines={capLines} sceneCaptions={g.captions} defaultCaptions={sc.captions || []} />
+          )}
+
+          {tab === 'layers' && (
+            <LayerPanel contentId={params.id} scene={g} setScene={setScene} sel={selLayer} setSel={(id) => { setSelLayer(id); if (id) setDrag(true); }} narration={narr} durationSec={sceneDur} design={design} onMsg={setMsg} />
           )}
 
           {tab === 'all' && (
@@ -352,32 +380,9 @@ export default function VideoEditor({ params }: { params: { id: string } }) {
               </div>
               {(design.size.w !== 1080 || design.size.h !== 1920) && <p className="mute">유튜브 쇼츠·인스타 릴스는 9:16 이 기본입니다. 다른 비율은 일반 영상·피드로 올라갑니다.</p>}
               <hr />
-              <b>색</b>
-              <div className="ed-colors">
-                {THEME_LABEL.map(([k, l]) => <Field key={k} label={l}><Color value={design.theme[k]} onChange={(v) => change((d) => { d.theme[k] = v; })} /></Field>)}
-              </div>
-              <div className="row">
-                {[
-                  ['남색·노랑', DEFAULT_THEME], ['검정·빨강', { bg: '#111111', bg2: '#2a0d0d', accent: '#FF3B30', text: '#FFFFFF', sub: '#F2B8B5' }],
-                  ['흰색·파랑', { bg: '#FFFFFF', bg2: '#E8EEFF', accent: '#1739A6', text: '#0D1530', sub: '#4A5578' }], ['초록·형광', { bg: '#062A1F', bg2: '#0F4A35', accent: '#B6FF3B', text: '#FFFFFF', sub: '#A8D8C2' }],
-                ].map(([n, t]: any) => <button key={n} onClick={() => change((d) => { d.theme = { ...t }; })}><span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 3, background: t.bg, border: `3px solid ${t.accent}`, verticalAlign: -2, marginRight: 4 }} />{n}</button>)}
-              </div>
-              <button onClick={() => change((d) => d.scenes.forEach((s: any) => { delete s.bg; }))}>장면별 배경색 모두 지우기</button>
+              <StylePanel contentId={params.id} design={design} change={change} styleKey={styleKey} setStyleKey={setStyleKey} onMsg={setMsg} />
               <hr />
-              <b>글꼴</b>
-              <Field label="제목 글꼴"><FontSelect value={design.fonts.title} onChange={(v) => change((d) => { d.fonts.title = v || 'Black Han Sans'; })} /></Field>
-              <Field label="본문 글꼴"><FontSelect value={design.fonts.body} onChange={(v) => change((d) => { d.fonts.body = v || 'Noto Sans KR'; })} /></Field>
-              <Field label={`제목 크기 ${Math.round(design.scale.title * 100)}%`}><input type="range" min={0.5} max={1.8} step={0.05} value={design.scale.title} onChange={(e) => change((d) => { d.scale.title = Number(e.target.value); })} /></Field>
-              <Field label={`본문 크기 ${Math.round(design.scale.body * 100)}%`}><input type="range" min={0.5} max={1.8} step={0.05} value={design.scale.body} onChange={(e) => change((d) => { d.scale.body = Number(e.target.value); })} /></Field>
-              <Field label={`자막 크기 ${Math.round(design.scale.caption * 100)}%`}><input type="range" min={0.5} max={1.8} step={0.05} value={design.scale.caption} onChange={(e) => change((d) => { d.scale.caption = Number(e.target.value); })} /></Field>
-              <hr />
-              <b>화면 장식</b>
-              <Field label="브랜드 문구"><input value={design.brand_text || ''} placeholder="오늘의 정책자금" onChange={(e) => change((d) => { d.brand_text = e.target.value || undefined; })} /></Field>
-              <div className="row">
-                {([['brand', '브랜드 배지'], ['date', '날짜'], ['progress', '진행 바'], ['backdrop', '배경 도형']] as const).map(([k, l]) => (
-                  <label key={k} className="row" style={{ gap: 4 }}><input type="checkbox" checked={design.chrome[k] !== false} onChange={(e) => change((d) => { d.chrome[k] = e.target.checked; })} /> {l}</label>
-                ))}
-              </div>
+              <Field label="브랜드 문구 (채널 표시 기본값)"><input value={design.brand_text || ''} placeholder="오늘의 정책자금" onChange={(e) => change((d) => { d.brand_text = e.target.value || undefined; })} /></Field>
               <hr />
               <b>배경음악</b>
               <select value={bgmId ?? ''} onChange={(e) => setBgmId(e.target.value || null)} disabled={!mayRender}>
@@ -391,7 +396,7 @@ export default function VideoEditor({ params }: { params: { id: string } }) {
       </div>
 
       <style>{`
-        #tpf-editor .ed-grid{display:grid;grid-template-columns:200px minmax(300px,1fr) 340px;gap:14px;align-items:start}
+        #tpf-editor .ed-grid{display:grid;grid-template-columns:190px minmax(300px,1fr) 380px;gap:14px;align-items:start}
         #tpf-editor .ed-scenes{display:grid;gap:6px;max-height:calc(100vh - 150px);overflow:auto}
         #tpf-editor .ed-scenes button{text-align:left;padding:8px 10px}
         #tpf-editor .ed-scenes button.on{border-color:var(--pri);background:#eef2ff}
@@ -405,30 +410,21 @@ export default function VideoEditor({ params }: { params: { id: string } }) {
         #tpf-editor .ed-form button{padding:5px 9px;font-size:12px}
         #tpf-editor .ed-colors{display:grid;grid-template-columns:1fr 1fr;gap:6px}
         #tpf-editor hr{border:0;border-top:1px solid var(--line);margin:4px 0;width:100%}
+        #tpf-editor .seg{display:inline-flex;flex-wrap:wrap;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+        #tpf-editor .seg button{border:0;border-radius:0;border-right:1px solid var(--line);padding:5px 8px;font-size:12px}
+        #tpf-editor .seg button:last-child{border-right:0}
+        #tpf-editor .seg button.on{background:var(--pri);color:#fff}
+        #tpf-editor .ai-box{display:grid;gap:6px;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:10px;padding:10px}
+        #tpf-editor .layer-list{display:grid;gap:4px}
+        #tpf-editor .layer-list button{text-align:left;font-size:12px;padding:6px 8px}
+        #tpf-editor .layer-list button.on{border-color:var(--pri);background:#eef2ff}
+        #tpf-editor textarea.mono{font-family:ui-monospace,monospace;font-size:11px}
+        #tpf-editor .hint{font-size:11px;color:var(--mute)}
+        #tpf-editor .font-row{display:grid;grid-template-columns:1fr 130px;gap:6px;align-items:end}
+        #tpf-editor .ed-form input[type=number]{padding:4px 6px}
         #tpf-editor .ed-ph{aspect-ratio:9/16;max-width:400px;margin:0 auto;display:grid;place-items:center;background:#0b1b3f;color:#fff;border-radius:12px}
         @media (max-width:1200px){#tpf-editor .ed-grid{grid-template-columns:1fr}#tpf-editor .ed-scenes{grid-auto-flow:column;grid-auto-columns:160px;overflow-x:auto}#tpf-editor .ed-panel{position:static;max-height:none}}
       `}</style>
     </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <label className="f">{label}{children}</label>;
-}
-function Color({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const v = /^#[0-9a-f]{6}/i.test(value || '') ? value.slice(0, 7) : '#ffffff';
-  return (
-    <span className="row" style={{ gap: 4, flexWrap: 'nowrap' }}>
-      <input type="color" value={v} onChange={(e) => onChange(e.target.value)} style={{ width: 36, height: 30, padding: 2 }} />
-      <input key={value} defaultValue={value || ''} onBlur={(e) => /^#[0-9a-f]{6}$/i.test(e.target.value) && e.target.value !== value && onChange(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} style={{ width: 80, fontFamily: 'monospace', fontSize: 12 }} />
-    </span>
-  );
-}
-function FontSelect({ value, fallback, onChange }: { value: string; fallback?: string; onChange: (v: string) => void }) {
-  return (
-    <select value={value} onChange={(e) => onChange(e.target.value)} style={{ fontFamily: `'${value || fallback}'`, fontSize: 16 }}>
-      {fallback && <option value="">기본 ({fallback})</option>}
-      {VIDEO_FONTS.map((f) => <option key={f.name} value={f.name} style={{ fontFamily: `'${f.name}'` }}>{f.name} — {f.kind}</option>)}
-    </select>
   );
 }

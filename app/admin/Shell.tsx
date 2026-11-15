@@ -8,6 +8,7 @@ import { MeCtx } from './MeContext';
 const NAV: { href: string; label: string; block: string; ext?: boolean }[] = [
   { href: '/admin', label: '현황판', block: 'board' },
   { href: '/admin/editorial', label: '편성표', block: 'editorial' },
+  { href: '/admin/styles', label: '영상 스타일', block: 'styles' },
   { href: '/admin/references', label: '참고 영상', block: 'references' },
   { href: '/admin/channels', label: '채널 성과', block: 'channels' },
   { href: '/admin/metrics', label: '작업 효율', block: 'metrics' },

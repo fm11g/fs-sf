@@ -4,62 +4,27 @@ import {
   type CalculateMetadataFunction,
 } from 'remotion';
 
+import { Captions } from './caption';
+import { Layers } from './layers';
+import { NewsChrome, NewsScene } from './news';
+import { FPS, Emph, elT, font, fw, sizeOf, totalFrames, type ElKey, type SceneProps, type ShortProps } from './common';
+export * from './common';
+
 /**
  * 숏폼 컴포지션 — 워커 렌더와 관리자 영상 편집기(브라우저 미리보기)가 같은 파일을 씀.
- * 좌표·크기는 1080 기준 px. 다른 화면 비율은 k = min(W/1080, H/1350) 로 맞춤.
+ *  template: 'news'(언론사 · 기본) | 'classic'(예전 디자인)
+ *  그리는 순서: 배경·상단 표시 → 장면 레이아웃 → Claude 모션 레이어(layers) → 자막
  */
-// 워커에서는 시스템 폰트(scripts/fonts.sh), 편집기에서는 구글 폰트로 같은 이름 사용
-const FONTS = ['Black Han Sans', 'Noto Sans KR', 'Do Hyeon', 'Gothic A1', 'Jua', 'Nanum Gothic', 'Nanum Myeongjo', 'Nanum Pen Script', 'Gowun Dodum', 'Sunflower', 'IBM Plex Sans KR', 'Noto Serif KR', 'Dongle', 'Gasoek One', 'Hahmlet'];
-const font = (name?: string) => `'${name && FONTS.includes(name) ? name : 'Noto Sans KR'}', 'Noto Sans CJK KR', sans-serif`;
-
-export const FPS = 30;
-const TAIL = 0.6; // 마지막 여운(초)
-
-export type ElKey = 'icon' | 'stat' | 'headline' | 'sub' | 'items' | 'cta' | 'caption';
-/** 요소별 편집값: 위치 이동(px, 1080 기준) · 크기 배율 · 색 · 폰트 · 숨김 */
-export type ElStyle = { dx?: number; dy?: number; scale?: number; color?: string; font?: string; hidden?: boolean; bg?: string };
-export type CaptionStyle = { bottom?: number; size?: number; color?: string; bg?: string; font?: string; box?: boolean; stroke?: boolean; hidden?: boolean };
-
-export type SceneProps = {
-  id: string; layout: string; headline: string; sub?: string; items?: string[]; value?: string; unit?: string;
-  emphasis?: string[]; motion?: string; icon?: string; cta?: string;
-  narration: string; captions: string[]; audioUrl: string; durationSec: number;
-  els?: Partial<Record<ElKey, ElStyle>>;
-  bg?: { bg?: string; bg2?: string };
-};
-export type ShortProps = {
-  brand: string; dateLabel: string;
-  theme: { bg: string; bg2: string; accent: string; text: string; sub: string };
-  fonts: { title: string; body: string };
-  scale: { title: number; body: number; caption: number };
-  scenes: SceneProps[];
-  bgmUrl?: string | null;
-  bgmVolume?: number;
-  size?: { w: number; h: number };
-  caption?: CaptionStyle;
-  chrome?: { brand?: boolean; date?: boolean; progress?: boolean; backdrop?: boolean };
-};
-
-export const sizeOf = (p: Pick<ShortProps, 'size'>) => ({ w: Math.round(p.size?.w || 1080), h: Math.round(p.size?.h || 1920) });
-export const totalFrames = (p: ShortProps) => Math.max(30, Math.ceil((p.scenes.reduce((n, s) => n + s.durationSec, 0) + TAIL) * FPS));
-
 export const calcMeta: CalculateMetadataFunction<ShortProps> = ({ props }) => {
   const { w, h } = sizeOf(props);
   return { durationInFrames: totalFrames(props), width: w % 2 ? w + 1 : w, height: h % 2 ? h + 1 : h };
 };
 
-/** 장면 시작 프레임 목록 (편집기에서 장면 선택 시 이동용) */
-export function sceneStarts(p: ShortProps) {
-  let start = 0;
-  return p.scenes.map((s) => { const from = start; start += Math.max(1, Math.round(s.durationSec * FPS)); return from; });
-}
-
-const elT = (e?: ElStyle, k = 1) => (e && (e.dx || e.dy || (e.scale && e.scale !== 1)) ? `translate(${(e.dx || 0) * k}px, ${(e.dy || 0) * k}px) scale(${e.scale ?? 1})` : undefined);
-
 export const Short: React.FC<ShortProps> = (p) => {
   const frame = useCurrentFrame();
   const { durationInFrames, width: W, height: H } = useVideoConfig();
   const k = Math.min(W / 1080, H / 1350);
+  const news = p.template === 'news';
   const ch = { brand: true, date: true, progress: true, backdrop: true, ...(p.chrome || {}) };
   let start = 0;
   const seqs = p.scenes.map((s) => {
@@ -74,19 +39,28 @@ export const Short: React.FC<ShortProps> = (p) => {
   const vol = p.bgmVolume ?? 0.12;
 
   return (
-    <AbsoluteFill style={{ background: `linear-gradient(160deg, ${bg} 0%, ${bg2} 100%)`, color: p.theme.text, overflow: 'hidden' }}>
-      {ch.backdrop && <Backdrop theme={p.theme} k={k} />}
-      {ch.progress && <div style={{ position: 'absolute', top: 0, left: 0, height: 10 * k, width: `${(frame / durationInFrames) * 100}%`, background: p.theme.accent }} />}
-      {(ch.brand || ch.date) && (
-        <div style={{ position: 'absolute', top: H * 0.047, left: 70 * k, right: 70 * k, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontFamily: font(p.fonts.body), fontWeight: 900 }}>
-          {ch.brand ? <span style={{ background: p.theme.accent, color: p.theme.bg, padding: `${12 * k}px ${26 * k}px`, borderRadius: 999, fontSize: 36 * k }}>{p.brand}</span> : <span />}
-          {ch.date && <span style={{ fontSize: 32 * k, color: p.theme.sub }}>{p.dateLabel}</span>}
-        </div>
+    <AbsoluteFill style={{ background: news ? `linear-gradient(180deg, ${bg} 0%, ${bg2} 100%)` : `linear-gradient(160deg, ${bg} 0%, ${bg2} 100%)`, color: p.theme.text, overflow: 'hidden' }}>
+      {news ? <NewsChrome p={p} k={k} W={W} H={H} /> : (
+        <>
+          {ch.backdrop && <Backdrop theme={p.theme} k={k} />}
+          {ch.progress && <div style={{ position: 'absolute', top: 0, left: 0, height: 10 * k, width: `${(frame / durationInFrames) * 100}%`, background: p.theme.accent }} />}
+          {(ch.brand || ch.date) && (
+            <div style={{ position: 'absolute', top: H * 0.047, left: 70 * k, right: 70 * k, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontFamily: font(p.fonts.body), fontWeight: 900 }}>
+              {ch.brand ? <span style={{ background: p.theme.accent, color: p.theme.bg, padding: `${12 * k}px ${26 * k}px`, borderRadius: 999, fontSize: 36 * k }}>{p.brand}</span> : <span />}
+              {ch.date && <span style={{ fontSize: 32 * k, color: p.theme.sub }}>{p.dateLabel}</span>}
+            </div>
+          )}
+        </>
       )}
 
       {seqs.map(({ s, from, len }) => (
         <Sequence key={s.id} from={from} durationInFrames={len} name={s.id}>
-          <Scene s={s} p={p} len={len} k={k} H={H} />
+          <AbsoluteFill>
+            <Layers layers={s.layers} p={p} len={len} k={k} W={W} H={H} zMax={0} />
+            {!s.hideLayout && (news ? <NewsScene s={s} p={p} len={len} k={k} W={W} H={H} /> : <Scene s={s} p={p} len={len} k={k} H={H} />)}
+            <Layers layers={s.layers} p={p} len={len} k={k} W={W} H={H} zMin={1} />
+            {!s.els?.caption?.hidden && !p.caption?.hidden && <Captions s={s} p={p} len={len} k={k} W={W} H={H} />}
+          </AbsoluteFill>
           {s.audioUrl && <Audio src={s.audioUrl} />}
         </Sequence>
       ))}
@@ -149,7 +123,7 @@ const Scene: React.FC<{ s: SceneProps; p: ShortProps; len: number; k: number; H:
         {s.layout === 'stat' && show('stat') && <Stat s={s} p={p} frame={frame} motion={motion} k={k} />}
 
         {show('headline') && (
-          <div style={{ fontFamily: font(E.headline?.font || p.fonts.title), color: E.headline?.color || p.theme.text, fontSize: s.layout === 'stat' ? T * 0.7 : T, lineHeight: 1.18, wordBreak: 'keep-all', whiteSpace: 'pre-line', textShadow: '0 8px 30px rgba(0,0,0,.35)', transform: elT(E.headline, k) }}>
+          <div style={{ fontFamily: font(E.headline?.font || p.fonts.title), fontWeight: fw(E.headline?.font || p.fonts.title, E.headline?.weight ?? p.fonts.titleWeight ?? 900), textAlign: E.headline?.align, color: E.headline?.color || p.theme.text, fontSize: s.layout === 'stat' ? T * 0.7 : T, lineHeight: 1.18, wordBreak: 'keep-all', whiteSpace: 'pre-line', textShadow: '0 8px 30px rgba(0,0,0,.35)', transform: elT(E.headline, k) }}>
             <Emph text={headline} words={s.emphasis} color={p.theme.accent} />
           </div>
         )}
@@ -192,7 +166,6 @@ const Scene: React.FC<{ s: SceneProps; p: ShortProps; len: number; k: number; H:
           </div>
         )}
       </div>
-      {show('caption') && !p.caption?.hidden && <Captions s={s} p={p} len={len} k={k} H={H} />}
     </AbsoluteFill>
   );
 };
@@ -211,45 +184,6 @@ const Stat: React.FC<{ s: SceneProps; p: ShortProps; frame: number; motion: stri
   return (
     <div style={{ fontFamily: font(e?.font || p.fonts.title), color: e?.color || p.theme.accent, fontSize: 250 * p.scale.title * k, lineHeight: 1, marginBottom: 24 * k, transform: elT(e, k) }}>
       {shown}<span style={{ fontSize: 100 * p.scale.title * k }}>{s.unit}</span>
-    </div>
-  );
-};
-
-const Emph: React.FC<{ text: string; words?: string[]; color: string }> = ({ text, words = [], color }) => {
-  const w = words.filter(Boolean);
-  if (!w.length) return <>{text}</>;
-  const re = new RegExp(`(${w.map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'g');
-  return <>{text.split(re).map((part, i) => (w.includes(part) ? <span key={i} style={{ color }}>{part}</span> : <React.Fragment key={i}>{part}</React.Fragment>))}</>;
-};
-
-/** 내레이션 길이 비례로 자막 컷 분배 */
-const Captions: React.FC<{ s: SceneProps; p: ShortProps; len: number; k: number; H: number }> = ({ s, p, len, k, H }) => {
-  const frame = useCurrentFrame();
-  const cs = p.caption || {};
-  const e = s.els?.caption;
-  const caps = s.captions?.length ? s.captions : [s.narration];
-  const weights = caps.map((c) => Math.max(1, c.replace(/\s/g, '').length));
-  const total = weights.reduce((a, b) => a + b, 0);
-  let acc = 0;
-  const idx = caps.findIndex((_, i) => {
-    acc += weights[i];
-    return frame < (acc / total) * len;
-  });
-  const i = idx < 0 ? caps.length - 1 : idx;
-  const capStart = Math.round((weights.slice(0, i).reduce((a, b) => a + b, 0) / total) * len);
-  const pop = interpolate(frame - capStart, [0, 4], [0.85, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
-  const box = cs.box !== false;
-  return (
-    <div style={{ position: 'absolute', bottom: cs.bottom != null ? cs.bottom * k : H * 0.1875, left: 60 * k, right: 60 * k, display: 'flex', justifyContent: 'center', transform: elT(e, k) }}>
-      <span style={{
-        background: box ? e?.bg || cs.bg || 'rgba(0,0,0,.72)' : 'transparent', borderRadius: 20 * k, padding: `${18 * k}px ${34 * k}px`, transform: `scale(${pop})`,
-        fontFamily: font(e?.font || cs.font || p.fonts.body), fontWeight: 900, fontSize: 68 * p.scale.caption * (cs.size ?? 1) * k, lineHeight: 1.3, textAlign: 'center', wordBreak: 'keep-all',
-        color: e?.color || cs.color || '#fff',
-        WebkitTextStroke: cs.stroke || !box ? `${Math.max(2, 6 * k)}px rgba(0,0,0,.85)` : '1px rgba(0,0,0,.4)',
-        paintOrder: 'stroke fill',
-      }}>
-        <Emph text={caps[i] || ''} words={s.emphasis} color={p.theme.accent} />
-      </span>
     </div>
   );
 };

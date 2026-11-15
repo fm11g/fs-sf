@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════════
--- 오늘의 정책자금 숏폼 공장 — Supabase 전체 설치 SQL (001 ~ 010 통합)
+-- 오늘의 정책자금 숏폼 공장 — Supabase 전체 설치 SQL (001 ~ 011 통합)
 -- 사용법: Supabase 대시보드 → SQL Editor → New query → 전체 붙여넣기 → Run
 -- 여러 번 실행해도 안전합니다(이미 있는 것은 건너뜀). 예전 버전을 이미 실행했어도 그대로 다시 실행하면 됩니다.
 -- 관리자 이메일은 여기서 넣지 않습니다: 배포 후 사이트에 처음 접속하면 '대표 계정 만들기' 화면이 나옵니다.
@@ -676,5 +676,28 @@ create policy admin_all on public.landing_cases for all to authenticated using (
 -- 랜딩 변형에 어떤 사례를 몇 번 카드에 넣었는지
 alter table public.landing_variants add column if not exists case_ids bigint[] not null default '{}';
 
--- 확인용: 테이블 목록 (23개가 나오면 완료)
+-- ┌──────────────────────────────────────────────
+-- │ 011_video_styles.sql
+-- └──────────────────────────────────────────────
+-- 011: 영상 스타일 프리셋 — 레퍼런스(캡처·링크)에서 뽑은 디자인 묶음
+create table if not exists public.video_styles (
+  id bigserial primary key,
+  name text not null,
+  description text,
+  style jsonb not null,                -- lib/video-style.ts StyleSpec (템플릿·색·폰트·굵기·자막·장식·모션 성향·규칙)
+  source jsonb not null default '{}',  -- { kind: 'image'|'youtube'|'ref'|'design'|'builtin', urls: [], ref_id }
+  images text[] not null default '{}', -- 분석에 쓴 캡처 이미지
+  created_by text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+alter table public.video_styles enable row level security;
+drop policy if exists admin_all on public.video_styles;
+create policy admin_all on public.video_styles for all to authenticated using (public.is_admin()) with check (public.is_admin());
+
+-- 콘텐츠별 스타일 ('news-navy' 같은 기본 프리셋 키 또는 video_styles.id). 비우면 설정의 기본 스타일
+alter table public.contents add column if not exists style_key text;
+
+
+-- 확인용: 테이블 목록 (24개가 나오면 완료)
 select table_name from information_schema.tables where table_schema = 'public' order by table_name;

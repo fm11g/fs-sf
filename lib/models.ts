@@ -52,6 +52,8 @@ export const TASKS: { key: string; label: string; group: '공정 단계' | '검�
   { key: 'fix', label: '글자수 자동 축약', group: '검수·학습', tier: 'fast', why: '의미 유지하며 줄이기만 — 단순 변환', defaults: { claude: 'claude-haiku-5-5', effort: 'low' } },
   { key: 'learn', label: 'SOP 학습·정리', group: '검수·학습', tier: 'deep', why: '좋은 예·수정 예·성과에서 규칙을 뽑아 SOP 를 고침 — 이후 모든 작업에 영향', defaults: { claude: 'claude-opus-5-5', effort: 'high' } },
 
+  { key: 'style', label: '스타일 추출 (캡처·링크)', group: '분석·편성', tier: 'normal', why: '레퍼런스 화면에서 색·폰트·자막·구성 규칙을 뽑아 프리셋으로 (이미지 이해 필요)', defaults: { claude: 'claude-sonnet-5-5', effort: 'medium' }, vision: true },
+  { key: 'motion', label: 'Claude 모션그래픽 설계', group: '분석·편성', tier: 'deep', why: '장면마다 레이어·키프레임·타이밍을 설계 — 화면 완성도를 좌우', defaults: { claude: 'claude-opus-5-5', effort: 'high' } },
   { key: 'reference', label: '참고 영상 분석', group: '분석·편성', tier: 'normal', why: '화면 프레임·대사로 구조와 재현 규칙 정리 (이미지 이해 필요)', defaults: { claude: 'claude-sonnet-5-5', effort: 'medium' }, vision: true },
   { key: 'channels', label: '채널 댓글 분석·분류', group: '분석·편성', tier: 'fast', why: '영상 형태 분류와 댓글 의도 집계 — 대량·단순', defaults: { claude: 'claude-haiku-5-5', effort: 'low' } },
   { key: 'editorial', label: '편성 AI PD', group: '분석·편성', tier: 'deep', why: '점수·새로움·흐름을 따져 한 주 순서를 다듬음', defaults: { claude: 'claude-sonnet-5-5', effort: 'high' } },
