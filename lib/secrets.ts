@@ -63,6 +63,12 @@ export const KEY_DEFS: KeyDef[] = [
 
 const ALLOWED = new Set(KEY_DEFS.map((k) => k.key));
 const REPO_KEYS = new Set(['GITHUB_REPO', 'GITHUB_DATA_REPO']);
+const TOKEN_KEYS = new Set(['GITHUB_TOKEN', 'GITHUB_DATA_TOKEN']);
+/** 토큰 값 정리: 앞뒤·중간 공백/줄바꿈, 따옴표, 'Bearer '·'token ' 접두어, 'GITHUB_TOKEN=' 같은 이름 붙여넣기 제거 */
+export function normToken(v: string) {
+  return String(v || '').trim().replace(/^[A-Z_]+=/, '').replace(/^(bearer|token)\s+/i, '').replace(/^['"`]|['"`]$/g, '').replace(/\s+/g, '');
+}
+const normVal = (k: string, v: string) => (REPO_KEYS.has(k) ? normRepo(v) : TOKEN_KEYS.has(k) ? normToken(v) : v);
 /** 저장소 값 정리: https://github.com/a/b.git · git@github.com:a/b.git · a/b/ → a/b (GitHub API 는 'owner/repo' 만 받음) */
 export function normRepo(v: string) {
   return String(v || '').trim()
@@ -84,7 +90,7 @@ function apply(rows: { key: string; value: string }[]) {
   for (const r of rows) {
     if (!ALLOWED.has(r.key) || !r.value) continue;
     if (!applied.has(r.key)) orig[r.key] = process.env[r.key];
-    process.env[r.key] = REPO_KEYS.has(r.key) ? normRepo(r.value) : r.value;
+    process.env[r.key] = normVal(r.key, r.value);
     applied.add(r.key);
     seen.add(r.key);
   }
@@ -119,7 +125,7 @@ export async function setSecrets(values: Record<string, string | null>, by: stri
   for (const [k, v] of Object.entries(values)) {
     if (!ALLOWED.has(k)) throw new Error(`저장할 수 없는 키: ${k}`);
     let val = typeof v === 'string' ? v.trim() : '';
-    if (val && REPO_KEYS.has(k)) val = normRepo(val);
+    if (val) val = normVal(k, val);
     if (val) up.push({ key: k, value: val, updated_by: by, updated_at: new Date().toISOString() });
     else del.push(k);
   }

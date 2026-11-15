@@ -14,7 +14,8 @@ export async function dispatch(event: 'render' | 'publish' | 'factory' | 'channe
   if (!res.ok) {
     const body = await res.text();
     const hint = res.status === 404 ? `저장소 '${repo}' 를 찾을 수 없거나 토큰이 이 저장소에 접근 못 함 — [연결·키]의 저장소(owner/repo)와 토큰의 대상 저장소를 확인하세요`
-      : res.status === 403 || res.status === 401 ? '토큰 권한 부족 — Fine-grained 토큰에 이 저장소의 Contents: Read and write 권한이 필요합니다'
+      : res.status === 401 ? `토큰 값이 틀렸거나 만료·재발급됨(…${token.slice(-4)}) — 권한 문제가 아님. [연결·키]에 GitHub 에서 방금 받은 토큰을 다시 붙여넣으세요`
+      : res.status === 403 ? '토큰 권한 부족 — Fine-grained 토큰에 이 저장소의 Contents: Read and write 권한이 필요합니다'
       : '';
     throw new Error(`GitHub 렌더 요청 실패 ${res.status}${hint ? ' — ' + hint : ''} (${body.slice(0, 120)})`);
   }
