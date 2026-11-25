@@ -38,6 +38,9 @@ const HELP = `tpf <명령> [인자] [--옵션]
   ai-decide <id> <step> [--apply]    AI 검수자에게 판단 위임
   render <id>                        렌더 요청 (3~6분)
   publish <id> [--targets youtube,instagram]
+  perf [일수]                         숏폼별 DB · 조회 · 공유 · 구독 · 점수 한눈에 (DB 많은 순)
+  site-leads                         홈페이지 숏폼 코드별 신청(DB) 수 받아오기 (성과 점수 DB 항목)
+  site-sync <id> [--force]           업로드된 숏폼 → 홈페이지 정보글 발행 + 추적 코드 등록
 
 에이전트 직접 작업 (서버 API 키 없이, 지금 이 에이전트가 산출물을 만든다)
   brief <id> <step> [--feedback "…"] 지시문(system·task·출력 형식) 받기
@@ -131,6 +134,9 @@ async function main() {
     case 'reject': return out(await call('step_decide', { content_id: await id(a1), step: need(a2, 'step'), decision: 'reject', note: need(flags.note, '--note (반려 사유)') }));
     case 'ai-decide': return out(await call('step_ai_decide', { content_id: await id(a1), step: need(a2, 'step'), apply: !!flags.apply }));
     case 'render': return out(await call('render_request', { content_id: await id(a1) }));
+    case 'site-leads': return out(await call('site_leads'));
+    case 'perf': return out(await call('performance_overview', { days: Number(a1) || 90 }));
+    case 'site-sync': return out(await call('site_sync', { content_id: await id(a1), force: !!flags.force }));
     case 'publish': return out(await call('publish_request', { content_id: await id(a1), ...(flags.targets ? { targets: String(flags.targets).split(',') } : {}) }));
     case 'brief': return out(await call('step_brief', { content_id: await id(a1), step: need(a2, 'step'), ...(flags.feedback ? { feedback: flags.feedback } : {}) }));
     case 'submit': return out(await call('step_submit', { content_id: await id(a1), step: need(a2, 'step'), output: readJson(a3), agent: flags.agent || process.env.TPF_AGENT || 'agent', ...(flags.model || flags.in ? { usage: { model: flags.model, platform: flags.platform, effort: flags.effort, input_tokens: Number(flags.in || 0), output_tokens: Number(flags.out || 0) } } : {}) }));

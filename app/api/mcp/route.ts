@@ -11,6 +11,8 @@ import { getSop, listSops, saveSop } from '@/lib/sop';
 import { dispatch } from '@/lib/github';
 import { sbAdmin } from '@/lib/supabase/server';
 import { hydrateEnv } from '@/lib/secrets';
+import { siteSync, syncLeads } from '@/lib/tpf-site';
+import { buildPerformance } from '@/lib/performance';
 import { AI_STEPS, STEP_DEFS, STEP_KEYS, stepDef, type StepKey } from '@/lib/steps';
 
 export const maxDuration = 300;
@@ -75,7 +77,10 @@ const TOOLS: { name: string; description: string; inputSchema: any; run: (a: any
   } },
   { name: 'sop_proposal_decide', description: 'SOP 제안 처리. apply: 보완 제안은 selected(변경 번호, 0부터)·edits({번호: 새 문구}), 재정리안은 content(다듬은 md, 선택)·force / reject / revert(반영 되돌리기). 운영자가 결정했을 때만 호출', inputSchema: obj({ id: { type: 'number' }, decision: { type: 'string', enum: ['apply', 'reject', 'revert'] }, selected: { type: 'array', items: { type: 'number' } }, edits: { type: 'object' }, content: str, force: { type: 'boolean' }, note: str }, ['id', 'decision']), run: (a) =>
     a.decision === 'apply' ? applyProposal(a.id, { selected: a.selected, edits: a.edits, content: a.content, force: !!a.force, note: a.note, by: 'human' }) : a.decision === 'reject' ? rejectProposal(a.id, a.note) : revertProposal(a.id) },
-  { name: 'channel_insights', description: '내 유튜브·인스타 영상 성과: 형태별(주제 분류·각도·훅·구성·대상) 평균 최종 점수·마지막 사용일, 상위/하위 영상, 시청자 요청(댓글), 최근 흐름', inputSchema: obj({}), run: async () => { const i = await channelInsights(); return { ...i, posts: i.posts.slice(0, 20).map((p: any) => ({ platform: p.platform, title: p.title, published_at: p.published_at, metrics: p.metrics, score: p.perf_score, maturity: p.perf?.maturity, attrs: p.attrs, comments: p.comment_analysis?.summary })) }; } },
+  { name: 'channel_insights', description: '내 유튜브·인스타 영상 성과(DB=홈페이지 신청 수가 최종 점수의 최대 비중): 형태별(주제 분류·각도·훅·구성·대상) 평균 최종 점수·마지막 사용일, 상위/하위 영상, 시청자 요청(댓글), 최근 흐름', inputSchema: obj({}), run: async () => { const i = await channelInsights(); return { ...i, posts: i.posts.slice(0, 20).map((p: any) => ({ platform: p.platform, title: p.title, published_at: p.published_at, metrics: p.metrics, db: p.leads ?? null, score: p.perf_score, maturity: p.perf?.maturity, attrs: p.attrs, comments: p.comment_analysis?.summary })) }; } },
+  { name: 'performance_overview', description: '업로드된 숏폼별 성과 한눈에: DB(홈페이지 신청 · 채널별) · 조회 · 좋아요 · 댓글 · 공유 · 구독 · 점수 · 링크. DB 많은 순', inputSchema: obj({ days: { type: 'number' } }), run: async (a) => { const p = await buildPerformance({ days: a.days || 90 }); return { totals: p.totals, rows: p.rows.sort((x, y) => (y.db.total ?? -1) - (x.db.total ?? -1)).slice(0, 40).map((r) => ({ title: r.title, code: r.code, published_at: r.published_at, db: r.db, total: r.total, score: r.score, db_per_1k: r.db_per_1k, links: { youtube: r.links.youtube, instagram: r.links.instagram, post: r.links.post } })) }; } },
+  { name: 'site_leads', description: '오늘의 정책자금 홈페이지에서 숏폼 코드별 신청(DB) 수(채널별: 유튜브·인스타·검색·정보글)를 받아와 콘텐츠에 저장. 반환: 코드별 DB 수 상위', inputSchema: obj({}), run: async () => { const r = await syncLeads(); return { ok: r.ok, updated: r.updated, warning: (r as any).warning, top: [...r.map.entries()].sort((a, b) => b[1].total - a[1].total).slice(0, 15).map(([code, v]) => ({ code, ...v })) }; } },
+  { name: 'site_sync', description: '업로드된 숏폼을 홈페이지에 등록: 정보글 발행(force=true 면 관리자 수정분을 덮어씀) + 추적 코드 목적지 등록. 운영자가 요청했을 때만', inputSchema: obj({ content_id: str, force: { type: 'boolean' } }, ['content_id']), run: (a) => siteSync(a.content_id, { force: !!a.force }) },
   { name: 'channels_sync', description: '채널 수집을 워커에 요청 (유튜브·인스타 지표·댓글 → 분석·점수 → 편성 갱신). 2~5분', inputSchema: obj({}), run: async () => { await dispatch('channels', {}); return { ok: true }; } },
   { name: 'channels_analyze', description: '이미 수집된 영상으로 댓글 분석·형태 분류·최종 점수·성과 학습만 다시 실행', inputSchema: obj({ reanalyze: { type: 'boolean' } }), run: (a) => analyzeChannels({ reanalyze: !!a.reanalyze }) },
   { name: 'editorial_plan', description: '편성표 조회(build=false) 또는 다시 편성(build=true, 배정·고정 슬롯 유지). 슬롯: 날짜·주제 분류·각도·훅·구성·대상·제목 아이디어·이유·흐름·실험 여부', inputSchema: obj({ build: { type: 'boolean' } }), run: async (a) => (a.build ? (await buildPlan({ force: true })).plan : activePlan()) },

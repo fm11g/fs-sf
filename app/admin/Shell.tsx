@@ -10,6 +10,7 @@ const NAV: { href: string; label: string; block: string; ext?: boolean }[] = [
   { href: '/admin/editorial', label: '편성표', block: 'editorial' },
   { href: '/admin/styles', label: '영상 스타일', block: 'styles' },
   { href: '/admin/references', label: '참고 영상', block: 'references' },
+  { href: '/admin/performance', label: '성과 한눈에', block: 'channels' },
   { href: '/admin/channels', label: '채널 성과', block: 'channels' },
   { href: '/admin/metrics', label: '작업 효율', block: 'metrics' },
   { href: '/admin/sop', label: 'SOP · AI 제어', block: 'sop' },

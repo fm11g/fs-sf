@@ -10,11 +10,11 @@ export const dynamic = 'force-dynamic';
 export async function POST(req: NextRequest, { params }: { params: { step: string } }) {
   const g = await guard(req, `step:${params.step}`, 'work');
   if (g.deny) return g.deny;
-  const { contentId, feedback, force, provider } = await req.json();
+  const { contentId, feedback, force, provider, attachments } = await req.json();
   const step = params.step as StepKey;
   if (!AI_STEPS.includes(step)) return NextResponse.json({ error: '알 수 없는 단계' }, { status: 400 });
   try {
-    return NextResponse.json(await runStep(step, contentId, { feedback, force, provider }));
+    return NextResponse.json(await runStep(step, contentId, { feedback, force, provider, attachments: Array.isArray(attachments) ? attachments.map(Number).filter(Boolean) : undefined }));
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }

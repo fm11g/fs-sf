@@ -4,6 +4,9 @@ export type Settings = {
   voice_id: string;
   tts_model: string;
   tts_speed: number;
+  /** 뉴스 장면 기본 순서 (role) — 편집기에서 장면을 옮기면 저장, 다음 기획·대사가 이 순서를 따름 */
+  news_flow_order?: string[];
+  news_flow_history?: { order: string[]; at: string; by: string; from?: string }[];
   /** AI 목소리 제공자·예비 순서·제공자별 목소리 (worker/video/tts-core.ts) */
   tts_provider?: 'fish' | 'elevenlabs' | 'google' | 'openai' | 'oss';
   tts_fallback?: ('fish' | 'elevenlabs' | 'google' | 'openai' | 'oss')[];
@@ -45,6 +48,11 @@ export type Settings = {
   cooldown_days: number;
   perf_to_learning: boolean;
   perf_weights: Record<string, number>;
+  /** 오늘의 정책자금 홈페이지 연동 (lib/tpf-site.ts) */
+  tpf_site_url?: string;        // 홈페이지 주소 — 추적 링크 go.html · 정보글
+  tpf_admin_url?: string;       // 홈페이지 관리자 주소 — /api/integration/*
+  tpf_post_on_publish?: boolean; // 업로드되면 정보글 자동 발행
+  tpf_forward_leads?: boolean;   // 공장 랜딩 신청을 홈페이지 관리자로 전달
 };
 
 export type ScriptScene = { id: string; narration: string; captions: string[] };

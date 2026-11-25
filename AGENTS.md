@@ -64,6 +64,7 @@ Next.js 14 App Router(Vercel) + Supabase + GitHub Actions 워커(Remotion).
 - 모델 호출은 반드시 `lib/llm.ts` 의 `ask()` 를 거친다(제공자 전환·사용량 기록). 특정 제공자 SDK를 다른 파일에서 직접 부르지 않는다.
 - SOP md(`sop/*.md`)에는 "무엇에 집중할지"만. JSON 스키마·글자수 상한 같은 기계 규칙은 `lib/prompts.ts`·`lib/pipeline.ts(lint)`에 둔다.
 - SOP 자동 보완은 `lib/learn.ts`(제안·반영) + `lib/sop-merge.ts`(줄 단위 적용, 순수 함수). 학습 제안이 SOP 전체를 다시 쓰게 만들지 않는다.
+- 홈페이지 연동(숏폼 코드·추적 링크·정보글 발행·DB 수)은 `lib/track.ts`(순수) + `lib/tpf-site.ts`(서버) 한 곳에서만. 카피 링크는 `siteLinks()` 를 거치고, 연동 실패가 업로드·분석을 멈추면 안 된다. 성과 점수에서 DB(leads)가 가장 큰 가중치여야 한다.
 - 채널 성과: 수집은 워커(`worker/src/channels.ts`), 점수는 순수 함수 `lib/perf.ts`, 분석·인사이트 `lib/channels.ts`. 편성: 순수 로직 `lib/editorial-core.ts`, 서버 `lib/editorial.ts`, 분류 목록 `lib/editorial-taxonomy.ts`(분류 값을 바꾸면 프롬프트·화면·통계가 함께 바뀜).
 - 점수·태그 체계는 `lib/tags.ts`(순수), 평가·생성 최적화·SOP 학습은 `lib/learn.ts`, 누적 학습 원자료는 `lib/learn-data.ts` → 학습 노트 `lib/learn-notes.ts`.
 - 모든 실행·평가·SOP 변경은 `lib/export.ts` 를 거쳐 GitHub data 브랜치·구글 시트로 나간다(`exportNow`). 새 산출물 경로를 만들면 내보내기도 연결한다. 내보내기 실패가 공정을 멈추면 안 된다.

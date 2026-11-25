@@ -75,7 +75,7 @@ export default function Channels() {
           <div className="seg">{(['all', 'youtube', 'instagram'] as const).map((p) => <button key={p} className={plat === p ? 'on' : ''} onClick={() => setPlat(p)}>{{ all: '전체', youtube: '유튜브', instagram: '인스타' }[p]}</button>)}</div>
         </div>
         <table style={{ marginTop: 8 }}>
-          <thead><tr><th></th><th>영상</th><th>게시</th><th>조회</th><th>좋아요</th><th>댓글</th><th>공유</th><th>저장</th><th>시청</th><th>최종 점수</th><th>형태</th></tr></thead>
+          <thead><tr><th></th><th>영상</th><th>게시</th><th>조회</th><th>좋아요</th><th>댓글</th><th>공유</th><th>저장</th><th>시청</th><th title="홈페이지 신청 수 (이 영상 링크 + 정보글 검색 배분)">DB</th><th>최종 점수</th><th>형태</th></tr></thead>
           <tbody>
             {posts.map((p: any) => (
               <Fragment key={p.id}>
@@ -85,11 +85,12 @@ export default function Channels() {
                   <td className="mute">{new Date(p.published_at).toLocaleDateString('ko-KR')}</td>
                   <td>{fmt(p.metrics?.views)}</td><td>{fmt(p.metrics?.likes)}</td><td>{fmt(p.metrics?.comments)}</td><td>{fmt(p.metrics?.shares)}</td><td>{fmt(p.metrics?.saves)}</td>
                   <td>{p.metrics?.avg_view_pct != null ? `${Math.round(p.metrics.avg_view_pct)}%` : p.metrics?.avg_watch_sec != null ? `${p.metrics.avg_watch_sec}초` : '-'}</td>
+                  <td title={p.leads_detail ? `이 영상 링크 ${p.leads_detail.own} + 검색·정보글 배분 ${p.leads_detail.organic_share}` : ''}>{p.leads != null ? <b style={{ color: p.leads > 0 ? '#0b7a70' : undefined }}>{Math.round(p.leads * 10) / 10}</b> : '-'}</td>
                   <td><b>{p.perf_score != null ? `★${p.perf_score}` : '-'}</b> <span className="mute">{MAT[p.perf?.maturity] || ''}</span></td>
                   <td className="mute">{[p.attrs?.topic_category, p.attrs?.angle, p.attrs?.hook_type, p.attrs?.format].filter(Boolean).join(' · ')}</td>
                 </tr>
                 {open === p.id && (
-                  <tr><td colSpan={11} style={{ background: '#fafbfe' }}>
+                  <tr><td colSpan={12} style={{ background: '#fafbfe' }}>
                     <div className="grid2">
                       <div>
                         <b>점수 구성</b> <span className="mute">(내 채널 영상 대비 백분위)</span>

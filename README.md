@@ -6,7 +6,8 @@
 - 단계마다 **SOP(md)** 가 있어 AI가 무엇에 집중할지, 얼마나 자유롭게 일할지(자유도 0~3), 누가 결정할지를 관리자에서 언제든 바꿉니다.
 - **현황판**(어느 콘텐츠가 어느 단계에서 무엇을 기다리는지)과 **작업 효율**(단계별 작업·대기 시간, 재작업률, AI 결정 비율, 비용, 조회→신청 전환)을 제공합니다.
 - **API + MCP 서버 + CLI**로 Claude Code · Codex · 그 밖의 에이전트에서 같은 스킬로 공장을 조작합니다.
-- 매일 조사 전에 **내 유튜브·인스타 채널의 조회·공유·댓글을 수집해 최종 점수**를 매기고, 점수가 높은 형태를 **겹치지 않게 7일 편성**(선별·흐름·순서)한 뒤 오늘 슬롯으로 기획합니다.
+- 숏폼마다 **고유 코드**가 붙어 유튜브·인스타 링크 → 오늘의 정책자금 홈페이지 → 신청(DB)까지 추적되고, 업로드되면 대사·조사로 만든 **SEO 정보글(목차·FAQ·영상)**이 홈페이지 「정책자금 정보」에 자동 발행됩니다 → [docs/SITE-TRACKING.md](docs/SITE-TRACKING.md)
+- 매일 조사 전에 **숏폼별 홈페이지 DB 수(가장 큰 비중) + 내 유튜브·인스타 채널의 조회·공유·댓글·구독을 모아 최종 점수**를 매기고, 점수가 높은 형태를 **겹치지 않게 7일 편성**(선별·흐름·순서)한 뒤 오늘 슬롯으로 기획합니다.
 - 결과물마다 **1~5점과 태그**를 매기고, 모든 결과물·중간 데이터를 점수·등급·특징 태그로 나눠 **GitHub(data 브랜치)와 구글 시트**에 저장합니다.
 - 점수로 결과물을 최적화합니다: 고득점 예시를 생성에 참고로 넣고, 후보 여러 개 중 내 채점 기준으로 가장 높게 예측된 것을 고릅니다.
 - **지금까지의 학습(학습 노트)**을 읽고 SOP md 를 줄 단위로 보완하거나 전체를 다시 정리합니다. 제안만 받거나 자동 반영하거나, 변경별로 골라·고쳐 반영하고 되돌릴 수 있습니다.
@@ -38,7 +39,11 @@ app/(site)/, app/l/   공개 사이트(SEO 정보글) · 랜딩 서빙
 lib/steps.ts          공정 정의(순서·의존 관계) ← 단계를 추가/변경할 때 여기부터
 lib/pipeline.ts       생성 → 규칙 검사 → 결정 방식 적용 → 하위 단계 무효화
 lib/prompts.ts        단계별 출력 형식(JSON 스키마). SOP md 는 여기에 주입됨
-lib/perf.ts           채널 영상 최종 점수 (순수) · lib/channels.ts 댓글 분석·형태 분류·인사이트
+lib/perf.ts           채널 영상 최종 점수 (순수 · DB 40%)
+lib/track.ts          숏폼 고유 코드 · 추적 링크 · 영상별 DB 배분 (순수)
+lib/tpf-site.ts       홈페이지 연동: 정보글 발행 · 숏폼 등록 · DB 수 동기화 · 랜딩 신청 전달
+lib/photo.ts          정보글 대표 사진 찾기 (Pexels · Unsplash)
+lib/performance.ts    콘텐츠별 성과 한눈에 (DB · 조회 · 공유 · 구독 · 점수) + 홈페이지 관리자로 지표 전송 · lib/channels.ts 댓글 분석·형태 분류·인사이트
 lib/editorial*.ts     편성: 분류 목록(taxonomy) · 후보 점수·반복 규칙(core, 순수) · 편성표·슬롯·브리프(서버)
 worker/src/channels.ts 유튜브·인스타 수집
 lib/tags.ts           점수·등급·태그·특징 추출 (순수)
@@ -56,7 +61,7 @@ bin/tpf.mjs           공장 CLI — MCP가 없는 에이전트도 같은 명령
 landing/govbizfund-template.html govbizfund.co.kr 실제 페이지에 슬롯만 붙인 템플릿(문구 63 + 후기 카드 8장) · landing/template.html 신청 유도형 랜딩 샘플(슬롯 50개 + 신청폼 · 선택 슬롯은 비우면 자동 숨김)
 worker/               렌더·업로드 워커 (video/Short.tsx 진입 · news.tsx 언론사 레이아웃 · caption.tsx 자막 · layers.tsx 모션 레이어)
 lib/video-style.ts    영상 스타일(프리셋·적용) · lib/motion-guide.ts Claude 디자인·모션 지침 · app/admin/styles 영상 스타일 화면
-supabase/migrations/  001 → 002 → 003 → 004 → 005 → … → 013_stop.sql 순서 (setup/supabase-all-in-one.sql 하나로 전부)
+supabase/migrations/  001 → 002 → 003 → 004 → 005 → … → 016_site_tracking.sql 순서 (setup/supabase-all-in-one.sql 하나로 전부)
 docs/                 SETUP · OPERATIONS(운영 SOP) · API-MCP
 ```
 
@@ -65,6 +70,7 @@ docs/                 SETUP · OPERATIONS(운영 SOP) · API-MCP
 - [docs/SETUP.md](docs/SETUP.md) — 설치 (Supabase → GitHub → Vercel → 채널 연결), 30분
 - [docs/OPERATIONS.md](docs/OPERATIONS.md) — 매일 운영하는 법, 결정 방식·자유도 조정 기준, 성과를 SOP에 반영하는 법
 - [docs/CHANNELS-EDITORIAL.md](docs/CHANNELS-EDITORIAL.md) — 채널 연결, 최종 점수 계산, 새로움 유지 편성(선별·흐름·순서)과 기획 연동
+- [docs/SITE-TRACKING.md](docs/SITE-TRACKING.md) — 오늘의 정책자금 홈페이지 연동: 숏폼별 고유 코드·추적 링크, 정보글 자동 발행, DB 수 → 성과 점수
 - [docs/DATA-SCORES.md](docs/DATA-SCORES.md) — 점수·태그, GitHub·구글 시트 데이터 저장, 점수 기반 결과물·SOP 최적화
 - [docs/LEARNING-NOTIFY.md](docs/LEARNING-NOTIFY.md) — 좋은 결과물로 SOP 자동 보완, 수동 조절, 이메일 알림 설정과 내용
 - [docs/VIDEO-STYLE.md](docs/VIDEO-STYLE.md) — 언론사 템플릿 9종, 레퍼런스 캡처·링크로 영상 스타일 만들기, Claude 모션 레이어, 자막 세부 조정, 렌더 진행 상황(진행 바·%·단계·로그), 강제 중지·자동 정지

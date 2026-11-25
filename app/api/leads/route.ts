@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { sbAdmin } from '@/lib/supabase/server';
 import { getSettings } from '@/lib/pipeline';
 import { guard } from '@/lib/auth';
+import { forwardLead } from '@/lib/tpf-site';
+import { trackCode } from '@/lib/track';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,8 +28,9 @@ export async function POST(req: NextRequest) {
     name, phone, company: String(b.company || '').slice(0, 60) || null, memo: String(b.memo || '').slice(0, 300) || null,
     consent: true, content_slug: String(b.slug || '').slice(0, 40) || null,
     utm: typeof b.utm === 'object' && b.utm ? b.utm : {},
+    track_code: b.slug ? trackCode(String(b.slug)) : null,
   };
-  const { error } = await sbAdmin().from('leads').insert(row);
+  const { data: saved, error } = await sbAdmin().from('leads').insert(row).select('id').single();
   if (error) return NextResponse.json({ error: '접수에 실패했습니다' }, { status: 500, headers: CORS });
 
   // 기존 DB 시스템으로 전달 (설정 > lead_webhook)
@@ -35,6 +38,8 @@ export async function POST(req: NextRequest) {
     const s = await getSettings();
     if (s.lead_webhook) await fetch(s.lead_webhook, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ source: 'today-policy-fund', ...row }) });
   } catch { /* 웹훅 실패는 접수에 영향 없음 */ }
+  // 오늘의 정책자금 홈페이지 관리자 상담 목록으로도 전달 (설정 > 홈페이지 연동)
+  try { await forwardLead({ ...row, id: saved?.id }); } catch (e: any) { console.warn('홈페이지 전달 실패:', e.message); }
   return NextResponse.json({ ok: true }, { headers: CORS });
 }
 export function OPTIONS() {

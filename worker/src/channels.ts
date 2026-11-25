@@ -121,7 +121,7 @@ async function instagram(link: string, sinceIso: string, warnings: string[]): Pr
   const user = process.env.IG_USER_ID;
   const token = process.env.IG_ACCESS_TOKEN;
   if (!user || !token) { warnings.push('인스타: IG_USER_ID / IG_ACCESS_TOKEN 이 없어 건너뜀'); return []; }
-  const G = process.env.IG_GRAPH_BASE || `https://${process.env.IG_GRAPH_HOST || 'graph.facebook.com'}/${process.env.GRAPH_VERSION || 'v21.0'}`;
+  const G = process.env.IG_GRAPH_BASE || `https://${(process.env.IG_GRAPH_HOST || (String(process.env.IG_ACCESS_TOKEN || '').startsWith('IG') ? 'graph.instagram.com' : 'graph.facebook.com'))}/${process.env.GRAPH_VERSION || 'v23.0'}`;
   const get = async (path: string, params: Record<string, string> = {}) => {
     calls.add('ig');
     const u = path.startsWith('http') ? path : `${G}/${path}?${new URLSearchParams({ ...params, access_token: token })}`;
@@ -148,6 +148,8 @@ async function instagram(link: string, sinceIso: string, warnings: string[]): Pr
       try { const r = await get(`${m.id}/insights`, { metric }); ins = Object.fromEntries((r.data || []).map((x: any) => [x.name, x.values?.[0]?.value ?? x.total_value?.value ?? null])); break; }
       catch (e: any) { if (!metric.includes('avg')) warnings.push(`인스타 insights 실패 (${m.id}): ${String(e.message).slice(0, 100)} — instagram_manage_insights 권한 확인`); }
     }
+    // 팔로우 증가 (지원되는 계정·API 버전에서만 — 실패해도 조용히 넘어감) → 성과 점수 '구독'
+    try { const f = await get(`${m.id}/insights`, { metric: 'follows' }); const v = f.data?.[0]; ins.follows = v?.values?.[0]?.value ?? v?.total_value?.value ?? null; } catch { /* 미지원 */ }
     const comments: Post['comments'] = [];
     if (Number(m.comments_count || 0) > 0) {
       try { const c = await get(`${m.id}/comments`, { fields: 'text,like_count,timestamp', limit: '20' }); for (const x of c.data || []) comments.push({ text: clean(x.text), likes: Number(x.like_count || 0), at: x.timestamp }); }
@@ -159,7 +161,7 @@ async function instagram(link: string, sinceIso: string, warnings: string[]): Pr
       metrics: {
         views: num(ins.views), likes: num(m.like_count), comments: num(m.comments_count), shares: num(ins.shares), saves: num(ins.saved), reach: num(ins.reach),
         avg_watch_sec: ins.ig_reels_avg_watch_time != null ? Math.round(Number(ins.ig_reels_avg_watch_time) / 100) / 10 : null, // ms → 초
-        avg_view_pct: null, subs_gained: null,
+        avg_view_pct: null, subs_gained: num(ins.follows),
       },
       comments,
     });

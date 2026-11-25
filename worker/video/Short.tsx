@@ -6,7 +6,7 @@ import {
 
 import { Captions } from './caption';
 import { Layers } from './layers';
-import { NewsChrome, NewsScene } from './news';
+import { NewsChrome, NewsScene, SceneMediaBg } from './news';
 import { FPS, Emph, elT, font, fw, sizeOf, totalFrames, type ElKey, type SceneProps, type ShortProps } from './common';
 export * from './common';
 
@@ -56,6 +56,7 @@ export const Short: React.FC<ShortProps> = (p) => {
       {seqs.map(({ s, from, len }) => (
         <Sequence key={s.id} from={from} durationInFrames={len} name={s.id}>
           <AbsoluteFill>
+            {news && s.media?.url && <SceneMediaBg s={s} p={p} len={len} k={k} W={W} H={H} />}
             <Layers layers={s.layers} p={p} len={len} k={k} W={W} H={H} zMax={0} />
             {!s.hideLayout && (news ? <NewsScene s={s} p={p} len={len} k={k} W={W} H={H} /> : <Scene s={s} p={p} len={len} k={k} H={H} />)}
             <Layers layers={s.layers} p={p} len={len} k={k} W={W} H={H} zMin={1} />

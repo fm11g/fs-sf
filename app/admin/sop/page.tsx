@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { FREEDOM_KO, GATE_KO, STEP_DEFS, type StepKey } from '@/lib/steps';
 import LearnPanel from './LearnPanel';
+import SopUsage from './SopUsage';
 
 export default function SopPage() {
   const [sops, setSops] = useState<any[]>([]);
@@ -104,15 +105,7 @@ export default function SopPage() {
             {draft.isDefault && <p className="mute">현재 저장소의 기본 SOP를 사용 중입니다. 저장하면 이 값이 우선합니다.</p>}
           </div>
           {def.kind === 'ai' && <LearnPanel step={sel} current={draft.content} mode={lc[sel]?.mode} onChanged={() => load(sel)} />}
-          <details className="card">
-            <summary><b>변경 이력 ({versions.length})</b></summary>
-            <table><tbody>
-              {versions.map((v) => (
-                <tr key={v.id}><td className="mute">{new Date(v.created_at).toLocaleString('ko-KR')}</td><td>자유 {v.freedom} · {GATE_KO[v.gate]}</td><td>{v.note}</td>
-                  <td><button onClick={() => setDraft({ ...draft, content: v.content, freedom: v.freedom, gate: v.gate })}>이 버전 불러오기</button></td></tr>
-              ))}
-            </tbody></table>
-          </details>
+          <SopUsage step={sel} refreshKey={versions.length} onLoad={(v) => { setDraft({ ...draft, content: v.content, freedom: v.freedom, gate: v.gate }); window.scrollTo({ top: 0, behavior: 'smooth' }); }} />
         </div>
       </div>
     </>

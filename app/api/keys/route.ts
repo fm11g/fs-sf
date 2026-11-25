@@ -1,3 +1,5 @@
+import { oauthOrigin, ytRedirectUri } from '@/lib/youtube';
+import { getSettings } from '@/lib/settings';
 import { NextRequest, NextResponse } from 'next/server';
 import { guard } from '@/lib/auth';
 import { genToken, hydrateEnv, normRepo, secretsStatus, setSecrets, KEY_GROUPS, siteUrl } from '@/lib/secrets';
@@ -11,6 +13,8 @@ export async function GET(req: NextRequest) {
   if (g.deny) return g.deny;
   return NextResponse.json({
     keys: await secretsStatus(), groups: KEY_GROUPS, site: siteUrl() || req.nextUrl.origin, providers: providersStatus(),
+    supabase_ref: (process.env.NEXT_PUBLIC_SUPABASE_URL || '').replace(/^https:\/\//, '').split('.')[0],
+    yt_redirect: ytRedirectUri(oauthOrigin(req.nextUrl.origin, (await getSettings().catch(() => ({} as any)))?.site_url)),
     supabase: { url: process.env.NEXT_PUBLIC_SUPABASE_URL || '', service: !!process.env.SUPABASE_SERVICE_ROLE_KEY },
   });
 }

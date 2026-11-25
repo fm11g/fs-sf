@@ -106,6 +106,8 @@ export type SceneProps = {
   emphasis?: string[]; motion?: string; icon?: string; cta?: string;
   kicker?: string /* 제목 위 작은 머리말: 기관·분류 */; tag?: string /* 속보·단독·공고 등 */; source?: string /* 출처 표기 */;
   layers?: Layer[]; hideLayout?: boolean /* 레이아웃 없이 레이어만 */;
+  /** 장면 자료(영상·이미지) — footage 레이아웃은 화면 안 틀에, 그 외 레이아웃은 배경으로 (어둡게) */
+  media?: { url: string; kind?: 'video' | 'image'; fit?: 'cover' | 'contain'; start?: number; label?: string; volume?: number; dim?: number; pos?: string };
   narration: string; captions: string[]; audioUrl: string; durationSec: number;
   els?: Partial<Record<ElKey, ElStyle>>;
   bg?: { bg?: string; bg2?: string };

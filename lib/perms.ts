@@ -58,6 +58,7 @@ export function pathBlock(path: string): string | null {
   if (path === '/admin' || path.startsWith('/admin/contents')) return 'board';
   if (path.startsWith('/admin/settings') || path.startsWith('/admin/models')) return 'settings';
   if (path.startsWith('/admin/usage')) return 'metrics';
+  if (path.startsWith('/admin/performance')) return 'channels';
   if (path.startsWith('/admin/cases')) return 'landing_tpl';
   if (path.startsWith('/admin/keys')) return 'keys';
   if (path.startsWith('/admin/members')) return 'members';

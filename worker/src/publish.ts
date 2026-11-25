@@ -49,7 +49,8 @@ async function youtube(c: any) {
 }
 
 async function instagram(c: any) {
-  const G = `https://graph.facebook.com/${process.env.GRAPH_VERSION || 'v21.0'}`;
+  // 인스타 로그인 토큰(IGAA…)이면 graph.instagram.com, 페이스북 로그인 토큰(EAA…)이면 graph.facebook.com
+  const G = `https://${(process.env.IG_GRAPH_HOST || (String(process.env.IG_ACCESS_TOKEN || '').startsWith('IG') ? 'graph.instagram.com' : 'graph.facebook.com'))}/${process.env.GRAPH_VERSION || 'v23.0'}`;
   const user = env('IG_USER_ID');
   const token = env('IG_ACCESS_TOKEN');
   const post = async (p: string, params: Record<string, string>) => {

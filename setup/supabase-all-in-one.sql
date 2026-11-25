@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════════
--- 오늘의 정책자금 숏폼 공장 — Supabase 전체 설치 SQL (001 ~ 013 통합)
+-- 오늘의 정책자금 숏폼 공장 — Supabase 전체 설치 SQL (001 ~ 015 통합)
 -- 사용법: Supabase 대시보드 → SQL Editor → New query → 전체 붙여넣기 → Run
 -- 여러 번 실행해도 안전합니다(이미 있는 것은 건너뜀). 예전 버전을 이미 실행했어도 그대로 다시 실행하면 됩니다.
 -- 관리자 이메일은 여기서 넣지 않습니다: 배포 후 사이트에 처음 접속하면 '대표 계정 만들기' 화면이 나옵니다.
@@ -779,5 +779,114 @@ revoke all on function public.render_progress_patch(uuid, jsonb) from public, an
 grant execute on function public.render_progress_patch(uuid, jsonb) to service_role;
 
 
--- 확인용: 테이블 목록 (24개가 나오면 완료)
+-- ┌──────────────────────────────────────────────
+-- │ 014_content_assets.sql
+-- └──────────────────────────────────────────────
+-- 014: 콘텐츠 첨부 파일 (피드백에 붙인 이미지·영상, 장면에 넣을 자료화면)
+-- 파일은 스토리지 media 버킷 contents/{slug}/assets/ 에 저장 → 렌더 워커가 그 주소로 읽어 영상에 넣음
+create table if not exists public.content_assets (
+  id bigserial primary key,
+  content_id uuid not null references public.contents(id) on delete cascade,
+  kind text not null check (kind in ('image', 'video')),
+  path text not null,                 -- 스토리지 경로 (media 버킷)
+  url text not null,                  -- 공개 주소 (워커·편집기·AI 가 씀)
+  name text,                          -- 원래 파일 이름
+  mime text,
+  size bigint,
+  width int, height int,
+  duration numeric,                   -- 영상 길이(초)
+  note text,                          -- 설명 (AI 에게 전달: "공단 홍보영상 중 공장 장면")
+  step text,                          -- 어느 단계 피드백에 붙였는지 (없으면 장면 자료)
+  created_by text,
+  created_at timestamptz not null default now()
+);
+create index if not exists content_assets_content_idx on public.content_assets(content_id, created_at);
+alter table public.content_assets enable row level security;
+drop policy if exists admin_all on public.content_assets;
+create policy admin_all on public.content_assets for all to authenticated using (public.is_admin()) with check (public.is_admin());
+
+
+-- ┌──────────────────────────────────────────────
+-- │ 015_sop_usage.sql
+-- └──────────────────────────────────────────────
+-- 015: SOP 사용 기록 — 어떤 SOP 버전이 언제 어떤 결과물(콘텐츠·단계)에 쓰였는지
+-- sop_versions.hash = 내용 해시 8자 (steps.sop_hash 와 같은 값) → 결과물에서 그때의 SOP 전문을 바로 찾음
+alter table public.sop_versions add column if not exists hash text;
+create index if not exists sop_versions_step_hash_idx on public.sop_versions(step, hash);
+
+create table if not exists public.sop_usage (
+  id bigserial primary key,
+  step text not null,
+  sop_hash text not null,
+  version_id bigint references public.sop_versions(id) on delete set null,
+  content_id uuid references public.contents(id) on delete cascade,
+  outcome text,                 -- approved(바로 승인) | review(검수 대기) | failed | stopped
+  decided_by text,              -- ai | auto | null
+  freedom int,
+  gate text,
+  provider text,
+  model text,
+  feedback boolean not null default false,  -- 수정 지시로 재생성한 실행인지
+  attempt int,
+  created_at timestamptz not null default now()
+);
+create index if not exists sop_usage_step_idx on public.sop_usage(step, created_at desc);
+create index if not exists sop_usage_hash_idx on public.sop_usage(step, sop_hash);
+create index if not exists sop_usage_content_idx on public.sop_usage(content_id);
+alter table public.sop_usage enable row level security;
+drop policy if exists admin_all on public.sop_usage;
+create policy admin_all on public.sop_usage for all to authenticated using (public.is_admin()) with check (public.is_admin());
+
+
+-- ===== 016_site_tracking.sql =====
+-- 016: 오늘의 정책자금 홈페이지 연동 — 숏폼 고유 코드 · 사이트 정보글 · 신청(DB) 수 · DB 가중 성과 점수
+--  · contents.track_code : 숏폼마다 하나 (slug 2026-11-19-a1b2 → 261119a1b2). 유튜브/인스타 링크에 c=코드 로 들어감
+--  · contents.site_post  : 홈페이지 정책자금 정보글 {id, url, slug, commit, at}
+--  · contents.lead_stats : 홈페이지 관리자에서 받아온 이 숏폼의 신청 수 {total, by_channel{youtube,instagram,seo,…}, by_status, first_at, last_at}
+--  · channel_posts.leads : 플랫폼 영상별 신청 수 (자기 채널 신청 + 검색·정보글 신청 배분) → 성과 점수의 가장 큰 구성 요소
+alter table public.contents add column if not exists track_code text;
+alter table public.contents add column if not exists site_post jsonb;
+alter table public.contents add column if not exists lead_stats jsonb;
+alter table public.contents add column if not exists leads_synced_at timestamptz;
+alter table public.contents add column if not exists instagram_url text;
+
+-- 기존 콘텐츠도 코드 채우기
+update public.contents
+   set track_code = lower(regexp_replace(substr(slug, 3), '[^a-z0-9]', '', 'gi'))
+ where track_code is null and slug ~ '^\d{4}-\d{2}-\d{2}-[a-z0-9]+$';
+create unique index if not exists contents_track_code_idx on public.contents (track_code) where track_code is not null;
+
+-- 새 콘텐츠는 만들어질 때 코드 자동 부여 (lib/track.ts trackCode 와 같은 규칙)
+create or replace function public.contents_track_code() returns trigger language plpgsql as $$
+begin
+  if new.track_code is null and new.slug ~ '^\d{4}-\d{2}-\d{2}-[a-z0-9]+$' then
+    new.track_code := lower(regexp_replace(substr(new.slug, 3), '[^a-z0-9]', '', 'gi'));
+  end if;
+  return new;
+end $$;
+drop trigger if exists contents_track_code on public.contents;
+create trigger contents_track_code before insert on public.contents
+  for each row execute function public.contents_track_code();
+
+alter table public.channel_posts add column if not exists leads numeric;          -- 이 영상으로 들어온 신청 수
+alter table public.channel_posts add column if not exists leads_detail jsonb;     -- {own, organic_share, by_channel}
+
+-- 숏폼 공장 자체 랜딩 신청에도 코드
+alter table public.leads add column if not exists track_code text;
+alter table public.leads add column if not exists forwarded_at timestamptz;      -- 홈페이지 관리자로 전달한 시각
+
+-- 성과 가중치: DB(신청) 수가 가장 큰 비중 · 구독 추가
+update public.settings set value = value
+  || jsonb_build_object(
+    'perf_weights', case when coalesce(value->'perf_weights', '{}'::jsonb) ? 'leads' then value->'perf_weights'   -- 이미 DB 가중치를 정했으면 유지
+      else jsonb_build_object('leads', 0.40, 'views', 0.12, 'engagement', 0.10, 'shares', 0.10, 'comments', 0.10, 'subscribers', 0.10, 'retention', 0.05, 'conversion', 0.03) end,
+    'tpf_site_url', coalesce(value->>'tpf_site_url', ''),      -- 예: https://todayfund.co.kr  (go.html 추적 링크 · 정보글 주소)
+    'tpf_admin_url', coalesce(value->>'tpf_admin_url', ''),    -- 예: https://today-fund-admin.vercel.app (연동 API)
+    'tpf_post_on_publish', coalesce((value->>'tpf_post_on_publish')::boolean, true),
+    'tpf_forward_leads', coalesce((value->>'tpf_forward_leads')::boolean, true)
+  )
+ where id = 1;
+
+
+-- 확인용: 테이블 목록 (26개가 나오면 완료)
 select table_name from information_schema.tables where table_schema = 'public' order by table_name;

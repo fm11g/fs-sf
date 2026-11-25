@@ -9,6 +9,7 @@ import { useMe } from '../../../MeContext';
 import { DEFAULT_FONTS, buildProps, captionsOf, narrationOf } from '@/worker/video/props';
 import { sceneStarts, type ElKey, type ElStyle } from '@/worker/video/common';
 import { NEWS_LAYOUTS, NEWS_THEME } from '@/worker/video/news';
+import MediaField from './MediaField';
 import { Color, Field, FontSelect, Seg, WeightSelect } from './controls';
 import CaptionPanel from './CaptionPanel';
 import LayerPanel from './LayerPanel';
@@ -51,6 +52,7 @@ function elsOf(s: any, news = false): ElKey[] {
 export default function VideoEditor({ params }: { params: { id: string } }) {
   const me = useMe();
   const [c, setC] = useState<any>(null);
+  const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [design, setDesign] = useState<any>(null);
   const [saved, setSaved] = useState<string>('');
   const [past, setPast] = useState<any[]>([]);
@@ -110,8 +112,8 @@ export default function VideoEditor({ params }: { params: { id: string } }) {
   const undo = () => { if (!past.length) return; setFuture((f) => [design, ...f]); setDesign(past[past.length - 1]); setPast((p) => p.slice(0, -1)); };
   const redo = () => { if (!future.length) return; setPast((p) => [...p, design]); setDesign(future[0]); setFuture((f) => f.slice(1)); };
 
-  const sc = c?.script?.scenes?.[sel];
   const g = design?.scenes?.[sel];
+  const sc = c?.script?.scenes?.find((x: any) => x.id === g?.id) || c?.script?.scenes?.[sel]; // 장면을 옮겨도 대사는 id 로 짝지음
   const setScene = (fn: (s: any) => void) => change((d) => fn(d.scenes[sel]));
   const setEl_ = (k: ElKey, patch: Partial<ElStyle> | null) => setScene((s) => {
     s.els = s.els || {};
@@ -191,16 +193,29 @@ export default function VideoEditor({ params }: { params: { id: string } }) {
     return () => window.removeEventListener('keydown', fn);
   });
 
+  /** 장면 순서 옮기기 — 미리보기·렌더가 이 순서를 따르고, 저장하면 다음 대사의 기본 순서로도 씀 */
+  const moveScene = (from: number, to: number) => {
+    if (to < 0 || to >= design.scenes.length || from === to) return;
+    change((d) => {
+      const [x] = d.scenes.splice(from, 1);
+      d.scenes.splice(to, 0, x);
+      d.scene_order = d.scenes.map((y: any) => y.id);
+    });
+    setSel(to);
+  };
+  const orderChanged = !!design?.scene_order && JSON.stringify(design.scene_order) !== JSON.stringify(JSON.parse(saved || '{}')?.scene_order || null);
+  const [learnOrder, setLearnOrder] = useState(true);
   const save = async (andRender = false) => {
     setBusy(andRender ? 'render' : 'save'); setMsg('');
     try {
-      await api(`/api/contents/${params.id}`, { video_edit: { design } }, 'PATCH');
+      const r = await api(`/api/contents/${params.id}`, { video_edit: { design, learn_order: orderChanged && learnOrder } }, 'PATCH');
+      if (r?.learned_order) setMsg(`장면 순서를 다음 대사의 기본 순서로 저장했습니다: ${r.learned_order.join(' → ')}`);
       if ((bgmId ?? null) !== (c.bgm_id ?? null) && mayRender) await api(`/api/contents/${params.id}`, { bgm_id: bgmId }, 'PATCH');
       setSaved(JSON.stringify(design));
       if (andRender) {
         await api('/api/render', { contentId: params.id });
         setMsg('저장했고 렌더를 시작했습니다 (보통 3~6분). 끝나면 작업대에서 새 영상을 확인하세요.');
-      } else setMsg(mayRender ? '저장했습니다. 영상 파일에 반영하려면 [저장 + 다시 렌더]를 누르세요.' : '저장했습니다. 렌더 권한이 있는 사람이 다시 렌더하면 영상에 반영됩니다.');
+      } else if (!r?.learned_order) setMsg(mayRender ? '저장했습니다. 영상 파일에 반영하려면 [저장 + 다시 렌더]를 누르세요.' : '저장했습니다. 렌더 권한이 있는 사람이 다시 렌더하면 영상에 반영됩니다.');
     } catch (e: any) { setMsg(`⚠ ${e.message}`); }
     setBusy(null);
   };
@@ -242,11 +257,25 @@ export default function VideoEditor({ params }: { params: { id: string } }) {
         {/* 장면 목록 */}
         <div className="ed-scenes">
           {design.scenes.map((s: any, i: number) => (
-            <button key={s.id} className={i === sel ? 'on' : ''} onClick={() => pick(i)}>
-              <b>{i + 1}</b> <span className="mute">{LAYOUTS.find((l) => l[0] === s.layout)?.[1] || s.layout} · {props.scenes[i]?.durationSec.toFixed(1)}초</span>
-              <div className="t">{s.layout === 'stat' && s.value ? `${s.value}${s.unit || ''} ` : ''}{s.headline || '(제목 없음)'}</div>
-            </button>
+            <div key={s.id} className={`sc-row ${dragFrom === i ? 'dragging' : ''}`} draggable
+              onDragStart={() => setDragFrom(i)} onDragEnd={() => setDragFrom(null)}
+              onDragOver={(e) => e.preventDefault()} onDrop={() => { if (dragFrom != null) moveScene(dragFrom, i); setDragFrom(null); }}>
+              <button className={i === sel ? 'on' : ''} onClick={() => pick(i)}>
+                <b>{i + 1}</b> <span className="mute">{LAYOUTS.find((l) => l[0] === s.layout)?.[1] || s.layout} · {props.scenes.find((x: any) => x.id === s.id)?.durationSec.toFixed(1)}초</span>
+                <div className="t">{s.layout === 'stat' && s.value ? `${s.value}${s.unit || ''} ` : ''}{s.headline || '(제목 없음)'}</div>
+              </button>
+              <div className="sc-move">
+                <button title="앞으로" disabled={i === 0} onClick={() => moveScene(i, i - 1)}>▲</button>
+                <button title="뒤로" disabled={i === design.scenes.length - 1} onClick={() => moveScene(i, i + 1)}>▼</button>
+              </div>
+            </div>
           ))}
+          <p className="mute" style={{ fontSize: 11, margin: '6px 2px' }}>끌어서 놓거나 ▲▼ 로 장면 순서를 바꿉니다.</p>
+          {orderChanged && (
+            <label className="row" style={{ gap: 4, fontSize: 12, background: '#fff9ec', border: '1px solid #f0c36d', borderRadius: 8, padding: 6 }}>
+              <input type="checkbox" checked={learnOrder} onChange={(e) => setLearnOrder(e.target.checked)} /> 저장할 때 이 순서를 다음 대사의 기본 순서로
+            </label>
+          )}
         </div>
 
         {/* 미리보기 */}
@@ -281,6 +310,8 @@ export default function VideoEditor({ params }: { params: { id: string } }) {
                   </div>
                   <Field label="출처 (숫자가 나오면 꼭 · 기관 + 문서명)"><input value={g.source || ''} placeholder="예: 중진공 2026년 시설자금 공고" onChange={(e) => setScene((s) => { s.source = e.target.value || undefined; })} /></Field>
                   {g.layout === 'stat' && <label className="row" style={{ gap: 4 }}><input type="checkbox" checked={g.motion !== 'none'} onChange={(e) => setScene((s) => { s.motion = e.target.checked ? undefined : 'none'; })} /> 숫자 카운트업</label>}
+                  <MediaField contentId={params.id} media={g.media} layout={g.layout} canUpload={true}
+                    set={(m, lay) => setScene((s) => { if (m) s.media = m; else delete s.media; if (lay) s.layout = lay; })} />
                 </>
               ) : (
                 <>
@@ -398,8 +429,12 @@ export default function VideoEditor({ params }: { params: { id: string } }) {
       <style>{`
         #tpf-editor .ed-grid{display:grid;grid-template-columns:190px minmax(300px,1fr) 380px;gap:14px;align-items:start}
         #tpf-editor .ed-scenes{display:grid;gap:6px;max-height:calc(100vh - 150px);overflow:auto}
-        #tpf-editor .ed-scenes button{text-align:left;padding:8px 10px}
-        #tpf-editor .ed-scenes button.on{border-color:var(--pri);background:#eef2ff}
+        #tpf-editor .ed-scenes .sc-row{display:grid;grid-template-columns:1fr 26px;gap:3px;align-items:stretch}
+        #tpf-editor .ed-scenes .sc-row.dragging{opacity:.4}
+        #tpf-editor .ed-scenes .sc-row>button{text-align:left;padding:8px 10px;cursor:grab}
+        #tpf-editor .ed-scenes .sc-move{display:grid;gap:3px}
+        #tpf-editor .ed-scenes .sc-move button{padding:0;font-size:10px;line-height:1}
+        #tpf-editor .ed-scenes .sc-row>button.on{border-color:var(--pri);background:#eef2ff}
         #tpf-editor .ed-scenes .t{font-size:12px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
         #tpf-editor .ed-panel{position:sticky;top:12px;max-height:calc(100vh - 120px);overflow-y:auto;overflow-x:hidden;margin:0;min-width:0}
         #tpf-editor .ed-form{display:grid;gap:10px;min-width:0}

@@ -174,7 +174,7 @@ export function CopyEditor({ c, onSave }: { c: Content; onSave: (v: any) => void
       <div className="card"><h2>Instagram Reels</h2>
         {f('instagram', 'caption', '캡션 (링크 포함)', 12, 2200)}
         {f('instagram', 'first_comment', '첫 댓글', 3)}
-        <p className="mute">인스타 캡션 링크는 클릭되지 않습니다 → 프로필 링크를 <b>/l/today</b> 로 고정해 두면 항상 최신 랜딩으로 연결됩니다.</p>
+        <p className="mute">인스타 캡션 링크는 클릭되지 않습니다 → 프로필 링크를 {v?.instagram?.profile_link ? <b>{v.instagram.profile_link}</b> : <b>/l/today</b>} 로 고정해 두면 항상 최신 숏폼으로 연결됩니다(인스타 DB 로 집계). 링크 주소의 <code>c=</code> 코드·<code>ch=</code> 값은 DB 추적용이니 지우지 마세요.</p>
       </div>
       <button className="pri" onClick={() => onSave(v)}>저장</button>
     </div>

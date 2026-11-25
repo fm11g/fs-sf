@@ -183,3 +183,10 @@
 #tpf-admin .editor .els button{font-size:12px;padding:4px 8px}
 #tpf-admin .editor .els button.on{background:#ffd400;border-color:#e0b800}
 @media (max-width:1200px){#tpf-admin .editor{grid-template-columns:1fr}}
+
+/* ── v31: 성과 한눈에 ── */
+#tpf-admin .perf-table th.n,#tpf-admin .perf-table td.n,#tpf-admin .perf-table th.n{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+#tpf-admin .perf-table tr.on>td{background:#f4f7ff}
+#tpf-admin .perf-table .db-hit{color:#0b7a70;font-size:16px}
+#tpf-admin .perf-links{display:flex;gap:6px;flex-wrap:wrap}
+#tpf-admin .perf-links a{font-size:12px;padding:2px 8px;border-radius:999px;background:#eef2ff;color:var(--pri);text-decoration:none;white-space:nowrap}

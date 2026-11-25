@@ -3,7 +3,7 @@
 > 빠른 길: `setup/README.md` (SQL 한 번 · Vercel 3개 · GitHub 2개 · 첫 가입)
 
 ## 1. Supabase
-1. 새 프로젝트 → SQL Editor에서 `setup/supabase-all-in-one.sql` 한 번 실행 (= migrations 001~013)
+1. 새 프로젝트 → SQL Editor에서 `setup/supabase-all-in-one.sql` 한 번 실행 (= migrations 001~015)
 2. Settings → API에서 `URL`, `anon key`, `service_role key` 복사
 3. 관리자 계정은 SQL 로 넣지 않습니다 — 배포 후 첫 접속 때 **대표 계정 만들기** 화면에서 생성
 
@@ -29,7 +29,7 @@
 **인스타그램**
 1. 비즈니스/크리에이터 계정 + 연결된 페이스북 페이지
 2. Meta 개발자 앱 → `instagram_content_publish`, `instagram_manage_comments`, `instagram_manage_insights`(채널 성과) 권한의 장기 토큰
-3. 프로필 링크를 `https://사이트/l/today` 로 설정
+3. 프로필 링크를 `https://홈페이지/go.html?c=today&ch=igp` 로 설정 (홈페이지 연동 전이면 `https://사이트/l/today`) — [SITE-TRACKING.md](SITE-TRACKING.md)
 
 ## 5. 관리자 초기 세팅 (순서대로)
 1. **설정**: 사이트 URL · 타깃 · 제공 가능한 혜택(이벤트 재료) · Fish Audio 보이스 ID · BGM 업로드(무드별 2곡 이상)

@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react';
 import { sbBrowser } from '@/lib/supabase/client';
 import { NOTIFY_EVENTS } from '@/lib/notify-events';
 import VoicePanel from './VoicePanel';
+import NewsOrderPanel from './NewsOrderPanel';
+import SitePanel from './SitePanel';
 
 const FIELDS: [string, string, 'text' | 'number' | 'bool' | 'list' | 'json'][] = [
   ['brand', '채널명', 'text'],
@@ -74,6 +76,8 @@ export default function SettingsPage() {
         <button className="pri" onClick={save}>저장</button>
       </div>
 
+      <SitePanel v={v} setV={setV} onSave={save} />
+      <NewsOrderPanel v={v} setV={setV} onSave={save} />
       <VoicePanel v={v} setV={setV} onSave={save} />
 
       <div className="card">
@@ -195,7 +199,7 @@ export default function SettingsPage() {
         <h2>채널 연결</h2>
         <p><a className="tag" href="/api/oauth/youtube">유튜브 채널 연결 → 리프레시 토큰 발급</a> <span className="mute">발급된 값을 GitHub Secret <code>YT_REFRESH_TOKEN</code> 에 저장</span></p>
         <p className="mute">MCP 서버(이 공장을 Claude에서 조작): <code>{typeof location !== 'undefined' ? location.origin : ''}/api/mcp</code> · 헤더 <code>Authorization: Bearer $MCP_TOKEN</code></p>
-        <p className="mute">인스타그램: Meta 개발자 앱에서 비즈니스/크리에이터 계정의 <code>IG_USER_ID</code> 와 장기 토큰(<code>instagram_content_publish</code> 권한)을 발급해 GitHub Secret 에 저장합니다. 프로필 링크는 <code>{v.site_url}/l/today</code> 로 고정하세요.</p>
+        <p className="mute">인스타그램: Meta 개발자 앱에서 비즈니스/크리에이터 계정의 <code>IG_USER_ID</code> 와 장기 토큰(<code>instagram_content_publish</code> 권한)을 발급해 GitHub Secret 에 저장합니다. 프로필 링크는 {v.tpf_site_url ? <code>{String(v.tpf_site_url).replace(/\/+$/, '')}/go.html?c=today&amp;ch=igp</code> : <code>{v.site_url}/l/today</code>} 로 고정하세요.</p>
       </div>
     </>
   );

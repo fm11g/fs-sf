@@ -1,3 +1,4 @@
+import { LAYOUT_ROLE, NEWS_ROLES } from '@/lib/motion-guide';
 import { NextRequest, NextResponse } from 'next/server';
 import { guard } from '@/lib/auth';
 import { can, canStep, visibleSteps } from '@/lib/perms';
@@ -68,14 +69,31 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const edited: StepKey[] = [];
   // 영상 편집기: 디자인(색·폰트·위치·크기·자막 문구)을 바꾸고 렌더만 다시 하게 표시 (디자인 승인은 유지)
   if (body.video_edit?.design) {
-    const { data: cur } = await db.from('contents').select('design').eq('id', params.id).single();
+    const { data: cur } = await db.from('contents').select('design, script, slug').eq('id', params.id).single();
     const design = { ...(cur?.design || {}), ...body.video_edit.design, edited_at: new Date().toISOString(), edited_by: g.me.email };
+    // 장면 순서를 다음 대사의 기본 순서로 저장 (대사의 뉴스 role 순서, role 이 없으면 레이아웃에서 역산)
+    let learned: string[] | null = null;
+    if (body.video_edit.learn_order && Array.isArray(design.scene_order)) {
+      const roleOf = (id: string) => {
+        const sc = (cur?.script?.scenes || []).find((x: any) => x.id === id);
+        const lay = (design.scenes || []).find((x: any) => x.id === id)?.layout;
+        return NEWS_ROLES.includes(sc?.role) ? sc.role : LAYOUT_ROLE[lay] || null;
+      };
+      const order = design.scene_order.map(roleOf).filter((r: any, i: number, a: any[]) => r && a.indexOf(r) === i) as string[];
+      if (order.length >= 3) {
+        const { data: sv } = await db.from('settings').select('value').eq('id', 1).single();
+        const v: any = sv?.value || {};
+        const hist = [{ order, at: new Date().toISOString(), by: g.me.name || g.me.email, from: cur?.slug }, ...(v.news_flow_history || [])].slice(0, 20);
+        await db.from('settings').update({ value: { ...v, news_flow_order: order, news_flow_history: hist } }).eq('id', 1);
+        learned = order;
+      }
+    }
     const { error } = await db.from('contents').update({ design }).eq('id', params.id);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     const { data: r } = await db.from('steps').select('state').eq('content_id', params.id).eq('step', 'render').maybeSingle();
     if (r && r.state !== 'pending' && r.state !== 'running') await db.from('steps').update({ state: 'stale', decision_note: '영상 편집기에서 수정됨 — 다시 렌더하세요' }).eq('content_id', params.id).eq('step', 'render');
-    await db.from('jobs').insert({ content_id: params.id, step: 'editor', status: 'done', message: `영상 편집 저장 (${g.me.name || g.me.email})` });
-    return NextResponse.json({ ok: true, edited: ['editor'] });
+    await db.from('jobs').insert({ content_id: params.id, step: 'editor', status: 'done', message: `영상 편집 저장 (${g.me.name || g.me.email})${learned ? ` · 장면 순서를 기본으로: ${learned.join('→')}` : ''}` });
+    return NextResponse.json({ ok: true, edited: ['editor'], learned_order: learned });
   }
   if (body.landing_values) {
     await db.from('landing_variants').update({ values: body.landing_values }).eq('content_id', params.id);

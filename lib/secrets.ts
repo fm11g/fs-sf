@@ -17,6 +17,7 @@ export const KEY_GROUPS: { group: string; desc: string }[] = [
   { group: '인스타그램', desc: '릴스 업로드·채널 성과' },
   { group: '이메일 알림', desc: 'Resend 또는 Gmail SMTP 중 하나' },
   { group: '데이터 내보내기', desc: '구글 시트(서비스 계정)·별도 데이터 저장소 (선택)' },
+  { group: '오늘의 정책자금 사이트', desc: '홈페이지 정보글 자동 발행 · 숏폼별 신청(DB) 수 연동. 주소는 [설정 > 홈페이지 연동]에서' },
   { group: '자동 생성', desc: '첫 가입 때 자동으로 만들어짐. 필요할 때만 다시 발급' },
 ];
 
@@ -44,10 +45,10 @@ export const KEY_DEFS: KeyDef[] = [
   { key: 'YT_REFRESH_TOKEN', label: '리프레시 토큰', group: '유튜브', secret: true, help: '직접 넣지 말고 [유튜브 계정 연결] 버튼을 누르면 자동 저장됩니다' },
   { key: 'YT_API_KEY', label: 'YouTube Data API 키', group: '유튜브', secret: true, help: '참고 영상 정보 조회용 (선택)' },
 
-  { key: 'IG_USER_ID', label: '인스타 비즈니스 계정 ID', group: '인스타그램' },
-  { key: 'IG_ACCESS_TOKEN', label: '장기 액세스 토큰', group: '인스타그램', secret: true },
+  { key: 'IG_USER_ID', label: '인스타 비즈니스 계정 ID', group: '인스타그램', placeholder: '숫자 ID (예: 17841400000000000)', help: '토큰을 만든 화면에 함께 표시되는 숫자 ID (아이디 @handle 아님)' },
+  { key: 'IG_ACCESS_TOKEN', label: '장기 액세스 토큰', group: '인스타그램', secret: true, placeholder: 'IGAA… (인스타 로그인) 또는 EAA…', help: 'IGAA… 토큰은 60일 만료 — 매일 크론이 20일마다 자동 연장합니다' },
   { key: 'GRAPH_VERSION', label: 'Graph API 버전', group: '인스타그램', placeholder: 'v23.0' },
-  { key: 'IG_GRAPH_HOST', label: 'Graph 호스트', group: '인스타그램', placeholder: 'graph.facebook.com', help: '인스타 로그인 방식이면 graph.instagram.com' },
+  { key: 'IG_GRAPH_HOST', label: 'Graph 호스트', group: '인스타그램', placeholder: '비우면 토큰으로 자동 (IGAA… → graph.instagram.com)', help: '보통 비워 두세요. 인스타 로그인 토큰(IGAA…)이면 graph.instagram.com, 페이스북 로그인 토큰(EAA…)이면 graph.facebook.com 을 자동으로 씁니다' },
 
   { key: 'RESEND_API_KEY', label: 'Resend API 키', group: '이메일 알림', secret: true },
   { key: 'EMAIL_FROM', label: '보내는 사람', group: '이메일 알림', placeholder: '오늘의 정책자금 <noreply@도메인>' },
@@ -59,6 +60,10 @@ export const KEY_DEFS: KeyDef[] = [
   { key: 'GOOGLE_SERVICE_ACCOUNT_JSON', label: '구글 서비스 계정 JSON', group: '데이터 내보내기', secret: true, multiline: true, help: 'Apps Script 방식이면 비워 두세요' },
   { key: 'GITHUB_DATA_REPO', label: '데이터 저장소 (다른 저장소에 저장할 때)', group: '데이터 내보내기' },
   { key: 'GITHUB_DATA_TOKEN', label: '데이터 저장소 토큰', group: '데이터 내보내기', secret: true },
+
+  { key: 'TPF_ADMIN_KEY', label: '홈페이지 관리자 연동 키', group: '오늘의 정책자금 사이트', secret: true, help: '홈페이지 관리자(Vercel)의 FACTORY_API_KEY 와 같은 값 (16자 이상)' },
+  { key: 'PEXELS_API_KEY', label: 'Pexels API 키 (정보글 대표 사진)', group: '오늘의 정책자금 사이트', secret: true, help: 'pexels.com/api 무료 키 — 정보글 주제에 맞는 사진을 찾아 대표 이미지로 (없으면 브랜드 카드)' },
+  { key: 'UNSPLASH_ACCESS_KEY', label: 'Unsplash Access Key (선택)', group: '오늘의 정책자금 사이트', secret: true, help: 'Pexels 에서 못 찾을 때 · unsplash.com/developers' },
 
   { key: 'SITE_URL', label: '사이트 주소', group: '자동 생성', auto: true, help: '첫 가입한 주소로 자동 저장. 도메인을 연결하면 바꾸세요' },
   { key: 'WORKER_SECRET', label: '워커 비밀값', group: '자동 생성', secret: true, auto: true },

@@ -3,7 +3,7 @@ import { sbAdmin } from './supabase/server';
 export async function listPosts(limit = 30) {
   const { data } = await sbAdmin()
     .from('contents')
-    .select('slug, topic, post, thumbnail_url, published_at')
+    .select('slug, topic, post, thumbnail_url, published_at, site_post')
     .eq('status', 'published')
     .not('post', 'is', null)
     .order('published_at', { ascending: false })
@@ -14,7 +14,7 @@ export async function listPosts(limit = 30) {
 export async function getPost(slug: string) {
   const { data } = await sbAdmin()
     .from('contents')
-    .select('slug, topic, post, images, thumbnail_url, youtube_id, research, published_at, updated_at')
+    .select('slug, topic, post, images, thumbnail_url, youtube_id, research, published_at, updated_at, site_post')
     .eq('slug', slug)
     .eq('status', 'published')
     .maybeSingle();

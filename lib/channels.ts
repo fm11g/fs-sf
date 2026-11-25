@@ -6,6 +6,9 @@ import { perfTags, scorePosts, COMPONENT_KO } from './perf';
 import { recordPerformanceRating } from './learn';
 import { exportNow, exportChannelSnapshot } from './export';
 import { features } from './tags';
+import { syncLeads } from './tpf-site';
+import { pushMetrics } from './performance';
+import { postLeads } from './track';
 
 const LOOKBACK = (s: any) => Number(s.channel_lookback_days || 60);
 const since = (days: number) => new Date(Date.now() - days * 864e5).toISOString();
@@ -55,9 +58,15 @@ export async function analyzeChannels(o: { warnings?: string[]; reanalyze?: bool
   const posts = rows || [];
   if (!posts.length) return { posts: 0, analyzed: 0, scored: 0, learned: 0, warnings: [...(o.warnings || []), '수집된 영상이 없습니다 — 채널 링크·토큰 확인'] };
 
+  const warnings = [...(o.warnings || [])];
+  // 0) 홈페이지 신청(DB) 수 동기화 — 성과 점수의 가장 큰 구성 요소
+  let leadSync: any = null;
+  try { leadSync = await syncLeads(); if (leadSync.warning) warnings.push(leadSync.warning); }
+  catch (e: any) { warnings.push(`홈페이지 DB 연동 실패: ${String(e.message).slice(0, 120)}`); }
+
   // 1) 공장 콘텐츠 형태 + 랜딩 전환
   const cids = [...new Set(posts.map((p: any) => p.content_id).filter(Boolean))];
-  const { data: cs } = cids.length ? await db.from('contents').select('id, slug, topic, research, plan, editorial, created_at').in('id', cids) : { data: [] as any[] };
+  const { data: cs } = cids.length ? await db.from('contents').select('id, slug, topic, research, plan, editorial, created_at, track_code, lead_stats').in('id', cids) : { data: [] as any[] };
   const byId = new Map((cs || []).map((c: any) => [c.id, c]));
   const slugs = (cs || []).map((c: any) => c.slug);
   const [{ data: ev }, { data: ld }] = slugs.length ? await Promise.all([
@@ -69,7 +78,6 @@ export async function analyzeChannels(o: { warnings?: string[]; reanalyze?: bool
   // 2) 댓글 분석 + 형태 분류 (바뀐 것만)
   const need = posts.filter((p: any) => o.reanalyze || !p.comment_analysis || p.comment_analysis?._hash !== p.comments_hash || !Object.keys(p.attrs || {}).length);
   let analyzed = 0;
-  const warnings = [...(o.warnings || [])];
   for (let i = 0; i < need.length; i += 6) {
     const batch = need.slice(i, i + 6).map((p: any) => ({ ...p, known: p.content_id ? contentAttrs(byId.get(p.content_id) || {}) : null }));
     try {
@@ -87,7 +95,18 @@ export async function analyzeChannels(o: { warnings?: string[]; reanalyze?: bool
     } catch (e: any) { warnings.push(`댓글 분석 실패: ${String(e.message).slice(0, 120)}`); break; }
   }
 
-  // 3) 최종 점수
+  // 2.5) 영상별 신청(DB) 수: 자기 플랫폼 링크 신청 + 정보글(검색)·기타 신청을 조회수 비율로 배분
+  const linkedOk = !!leadSync?.ok;
+  for (const p of posts) {
+    const c: any = p.content_id ? byId.get(p.content_id) : null;
+    if (!linkedOk || !c) { p.leads = null; continue; }
+    const sib = posts.filter((x: any) => x.content_id === p.content_id && x.id !== p.id).reduce((a: number, x: any) => a + Number(x.metrics?.views || 0), 0);
+    const pl = postLeads(c.lead_stats || { total: 0, by_channel: {} }, p.platform, Number(p.metrics?.views || 0), sib);
+    p.leads = pl?.leads ?? 0;
+    p.leads_detail = pl;
+  }
+
+  // 3) 최종 점수 (DB 가중치 최대)
   const scores = scorePosts(posts.map((p: any) => ({ ...p, conversion: p.content_id ? conv(byId.get(p.content_id)?.slug) : null })), s.perf_weights);
   const now = new Date().toISOString();
   for (const p of posts) {
@@ -95,27 +114,37 @@ export async function analyzeChannels(o: { warnings?: string[]; reanalyze?: bool
     if (!r) continue;
     p.perf = { ...r, computed_at: now };
     p.perf_score = r.score;
-    await db.from('channel_posts').update({ perf: p.perf, perf_score: r.score }).eq('id', p.id);
+    await db.from('channel_posts').update({ perf: p.perf, perf_score: r.score, leads: p.leads ?? null, leads_detail: p.leads_detail ?? null }).eq('id', p.id);
   }
 
-  // 4) 성과 → 학습: 확정(7일+) 된 공장 콘텐츠의 기획·대사·카피를 성과 점수로 평가
+  // 4) 성과 → 학습: 확정(7일+) 된 공장 콘텐츠를 성과 점수로 평가 — DB(신청) 수가 가장 큰 근거
   let learned = 0;
   if (s.perf_to_learning !== false) {
     for (const cid of cids) {
       const linked = posts.filter((p: any) => p.content_id === cid && p.perf?.maturity === 'final');
       if (!linked.length) continue;
+      const c: any = byId.get(cid) || {};
       const totalViews = linked.reduce((a: number, p: any) => a + (p.metrics?.views || 0), 0) || linked.length;
       const score = linked.reduce((a: number, p: any) => a + p.perf.score * ((p.metrics?.views || 0) || 1), 0) / totalViews;
-      const tags = [...new Set(linked.flatMap((p: any) => perfTags(p.perf)))];
-      const note = `채널 성과 ★${score.toFixed(1)} — ` + linked.map((p: any) => `${p.platform === 'youtube' ? '유튜브' : '인스타'} 조회 ${p.metrics?.views ?? '-'}·좋아요 ${p.metrics?.likes ?? '-'}·공유 ${p.metrics?.shares ?? '-'}·댓글 ${p.metrics?.comments ?? '-'}${p.comment_analysis?.summary ? ` (${p.comment_analysis.summary})` : ''}`).join(' / ');
-      for (const step of ['plan', 'script', 'copy'] as const) {
-        try { if (await recordPerformanceRating(step, cid, score, tags, note.slice(0, 500))) learned++; } catch { /* 산출물 없음 */ }
+      const ls = c.lead_stats as any;
+      const tags = [...new Set([...linked.flatMap((p: any) => perfTags(p.perf)), ...(ls?.total > 0 ? ['성과:DB발생'] : linkedOk ? ['성과:DB없음'] : [])])];
+      const bc = ls?.by_channel || {};
+      const db_line = ls ? `DB ${ls.total}건 (유튜브 ${bc.youtube || 0} · 인스타 ${bc.instagram || 0} · 검색·정보글 ${(bc.seo || 0) + (bc.blog || 0) + (bc.naver || 0)} · 기타 ${Math.max(0, ls.total - (bc.youtube || 0) - (bc.instagram || 0) - (bc.seo || 0) - (bc.blog || 0) - (bc.naver || 0))})` : 'DB 미연동';
+      const note = `채널 성과 ★${score.toFixed(1)} — ${db_line} / ` + linked.map((p: any) => `${p.platform === 'youtube' ? '유튜브' : '인스타'} DB ${p.leads ?? '-'}·조회 ${p.metrics?.views ?? '-'}·좋아요 ${p.metrics?.likes ?? '-'}·공유 ${p.metrics?.shares ?? '-'}·댓글 ${p.metrics?.comments ?? '-'}·구독 +${p.metrics?.subs_gained ?? '-'}${p.comment_analysis?.summary ? ` (${p.comment_analysis.summary})` : ''}`).join(' / ');
+      // 신청으로 이어지는 단계(이벤트·랜딩·정보글)까지 함께 학습
+      for (const step of ['plan', 'script', 'copy', 'offer', 'landing', 'post'] as const) {
+        try { if (await recordPerformanceRating(step, cid, score, tags, note.slice(0, 600))) learned++; } catch { /* 산출물 없음 */ }
       }
     }
   }
 
+  // 5) 홈페이지 관리자 [유입 분석]에 콘텐츠별 조회·공유·구독·점수 보내기
+  if (leadSync?.ok) {
+    try { await pushMetrics(); } catch (e: any) { warnings.push(`홈페이지 지표 전송 실패: ${String(e.message).slice(0, 120)}`); }
+  }
+
   await exportNow(() => exportChannelSnapshot(posts));
-  return { posts: posts.length, analyzed, scored: scores.size, learned, warnings };
+  return { posts: posts.length, analyzed, scored: scores.size, learned, leads_synced: leadSync?.updated ?? null, warnings };
 }
 
 /** 편성·화면용 인사이트: 형태별 성과, 마지막 사용, 시청자 요청, 최근 흐름 */
@@ -123,7 +152,7 @@ export async function channelInsights() {
   const s = await getSettings();
   const db = sbAdmin();
   const [{ data: posts }, { data: recent }] = await Promise.all([
-    db.from('channel_posts').select('id, platform, url, title, thumbnail_url, published_at, metrics, attrs, attrs_source, perf, perf_score, comment_analysis, content_id, comments').gte('published_at', since(LOOKBACK(s))).order('published_at', { ascending: false }).limit(400),
+    db.from('channel_posts').select('id, platform, url, title, thumbnail_url, published_at, metrics, attrs, attrs_source, perf, perf_score, comment_analysis, content_id, comments, leads, leads_detail').gte('published_at', since(LOOKBACK(s))).order('published_at', { ascending: false }).limit(400),
     db.from('contents').select('id, slug, topic, research, plan, editorial, created_at, published_at').gte('created_at', since(21)).order('created_at', { ascending: false }).limit(40),
   ]);
   const P = posts || [];
@@ -166,7 +195,7 @@ export async function channelInsights() {
   return {
     overall: Math.round(overall * 100) / 100, posts: P, scored: scored.length, dims, sequence: seq.slice(0, 14),
     requests: [...reqMap.values()].sort((a, b) => b.n - a.n || b.last.localeCompare(a.last)).slice(0, 12),
-    top: byScore.slice(0, 5).map((p: any) => ({ title: p.title, score: p.perf_score, attrs: p.attrs, platform: p.platform, url: p.url, why: Object.entries(p.perf?.components || {}).filter(([, c]: any) => c.pct >= 0.8).map(([k]) => COMPONENT_KO[k]) })),
+    top: byScore.slice(0, 5).map((p: any) => ({ title: p.title, score: p.perf_score, leads: p.leads ?? null, attrs: p.attrs, platform: p.platform, url: p.url, why: Object.entries(p.perf?.components || {}).filter(([, c]: any) => c.pct >= 0.8).map(([k]) => COMPONENT_KO[k]) })),
     bottom: byScore.slice(-5).reverse().map((p: any) => ({ title: p.title, score: p.perf_score, attrs: p.attrs, platform: p.platform, url: p.url })),
     last_collected: P.map((p: any) => p.collected_at).filter(Boolean).sort().pop() || null,
   };

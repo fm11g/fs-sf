@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import WebSocket from 'ws';
 
 export const env = (k: string, required = true) => {
   const v = process.env[k];
@@ -6,7 +7,13 @@ export const env = (k: string, required = true) => {
   return v || '';
 };
 
-export const db = createClient(env('SUPABASE_URL'), env('SUPABASE_SERVICE_ROLE_KEY'), { auth: { persistSession: false } });
+// Supabase 최신판은 Node 22+ 기본 WebSocket 을 씀. Node 20 이하(워크플로가 예전 버전일 때)에서도 멈추지 않게 ws 로 대신함
+const nativeWs = typeof (globalThis as any).WebSocket !== 'undefined';
+if (!nativeWs) console.warn(`⚠ Node ${process.version} — 기본 WebSocket 없음, ws 로 대신합니다 (워크플로 node-version 22 권장)`);
+export const db = createClient(env('SUPABASE_URL'), env('SUPABASE_SERVICE_ROLE_KEY'), {
+  auth: { persistSession: false },
+  ...(nativeWs ? {} : { realtime: { transport: WebSocket as any } }),
+});
 
 /**
  * 관리자 [연결·키]에 저장한 값 → process.env (GitHub Secrets 보다 우선).
@@ -67,7 +74,7 @@ export async function notifySite(event: string, contentId: string, step?: string
     const site = (process.env.SITE_URL || '').replace(/\/$/, '');
     if (!site || !process.env.WORKER_SECRET) return;
     await fetch(`${site}/api/notify`, {
-      method: 'POST', signal: AbortSignal.timeout(20000),
+      method: 'POST', signal: AbortSignal.timeout(event === 'published' ? 120000 : 20000), // 업로드 완료는 홈페이지 정보글 발행까지 기다림
       headers: { 'content-type': 'application/json', 'x-worker-secret': process.env.WORKER_SECRET },
       body: JSON.stringify({ event, contentId, step, message }),
     });

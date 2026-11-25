@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { guard } from '@/lib/auth';
-import { oauthClient } from '@/lib/youtube';
+import { oauthClient, oauthOrigin } from '@/lib/youtube';
+import { getSettings } from '@/lib/settings';
 import { setSecrets } from '@/lib/secrets';
 
 export const dynamic = 'force-dynamic';
@@ -13,7 +14,7 @@ export async function GET(req: NextRequest) {
   if (!code) return NextResponse.json({ error: 'code 없음' }, { status: 400 });
   const back = (q: string) => NextResponse.redirect(new URL(`/admin/keys?${q}`, req.nextUrl.origin));
   try {
-    const { tokens } = await oauthClient(req.nextUrl.origin).getToken(code);
+    const { tokens } = await oauthClient(oauthOrigin(req.nextUrl.origin, (await getSettings().catch(() => ({} as any)))?.site_url)).getToken(code);
     if (!tokens.refresh_token) return back('yt=norefresh');
     await setSecrets({ YT_REFRESH_TOKEN: tokens.refresh_token }, g.me.email);
     return back('yt=ok');

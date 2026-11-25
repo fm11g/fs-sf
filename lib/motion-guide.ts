@@ -14,8 +14,54 @@ export const NEWS_LAYOUT_GUIDE = `언론사 템플릿 레이아웃 (layout):
 - document: 공고문 요약 카드. tag("공고") + kicker(공고 번호) + headline(공고 제목) + items 3~5줄 + emphasis(형광펜 칠할 단어) + source
 - timeline: 일정. headline + items "날짜|내용" 2~4개 (마지막이 마감, 빨간 점)
 - cta: 안내. kicker + headline(2줄) + cta(어디서 확인하는지) + sub(무료·심사 안내)
+- footage: 자료화면. media(첨부 영상·이미지 — 아래 '첨부 자료' 목록의 url) + kicker + headline(1~2줄 제목) + sub(자료 설명) + source("자료: 중진공 홍보영상" 처럼). 첨부 영상이 있을 때만
 공통: emphasis = headline 안에서 강조할 단어(숫자·핵심어 1~2개). source = 출처(기관 + 문서명), 숫자가 나오면 반드시.
+media(footage 외 레이아웃도 가능): { "url": 첨부 url, "kind": "video"|"image", "fit": "cover"|"contain", "start": 영상 시작 초, "label": "자료화면" } — breaking·headline 에 넣으면 배경 영상으로 깔림(어둡게 처리)
 원칙: 왼쪽 정렬 · 한 장면 한 메시지 · 이모지 금지 · 과장·감탄 표현 금지 · 첫 장면은 breaking 또는 headline · 마지막은 cta.`;
+
+/**
+ * 정책자금 뉴스 브리핑 흐름 — 기획·대사·디자인이 같이 따르는 기본 구성 (운영자가 고른 참고 영상 9장면)
+ * role → 레이아웃: 대사의 role 을 디자인이 그대로 레이아웃으로 씀
+ */
+export const NEWS_ROLE_LAYOUT: Record<string, string> = {
+  breaking: 'breaking', stat: 'stat', points: 'list', compare: 'compare', quote: 'quote',
+  document: 'document', timeline: 'timeline', apply: 'cta', article: 'headline', footage: 'footage',
+};
+export const NEWS_ROLES = Object.keys(NEWS_ROLE_LAYOUT);
+
+/** 뉴스 흐름 표의 각 줄 (role → 화면·내레이션 예·자막 예) */
+const FLOW_ROWS: Record<string, string> = {
+  breaking: '| breaking | 속보 태그 + 기관 + 2줄 헤드라인 | "중소벤처기업진흥공단이 제조업 시설자금 공고를 냈습니다." | 이번 주 시설자금 공고가 나왔습니다 |',
+  stat: '| stat | 핵심 숫자 하나 크게 | "기업당 최대 60억 원까지 지원합니다." | 기업당 최대 60억 원까지 지원합니다 |',
+  points: '| points | 꼭 알아야 할 3가지 (대상·한도·마감) | "핵심 세 가지만 정리합니다. 대상은 연매출 5억 이상 제조업…" | 핵심 세 가지만 정리합니다 |',
+  compare: '| compare | 일반 대출 vs 정책자금 | "일반 대출과 무엇이 다를까요? 정부가 보증해 금리가 낮습니다." | 일반 대출과 무엇이 다를까요 |',
+  quote: '| quote | 기관·보도자료 인용 | "공단은 설비 투자 기업을 우선 지원하겠다고 밝혔습니다." | 우선 지원한다고 밝혔습니다 |',
+  document: '| document | 공고문 요약 카드(형광펜) | "공고문 핵심은 이렇습니다." | 공고문 핵심은 이렇습니다 |',
+  timeline: '| timeline | 접수 일정 (마지막=마감) | "접수는 11월 20일부터 28일까지입니다." | 접수는 11월 20일부터 28일까지 |',
+  apply: '| apply | 신청 방법 · 내 조건 확인 | "내 조건으로 가능한지 고정 댓글에서 30초 만에 확인하세요." | 고정 댓글에서 확인하세요 |',
+  article: '| article | 기사 카드 (보도·정책 변화 소개) | "정부가 올해 설비투자 정책자금을 늘렸습니다." | 설비투자 정책자금 확대 |',
+  footage: '| footage | 자료화면 (첨부 영상) | "공단은 스마트공장 설비 기업을 우선 지원합니다." | 스마트공장 설비 우선 지원 |',
+};
+export const DEFAULT_FLOW_ORDER = ['breaking', 'stat', 'points', 'compare', 'quote', 'document', 'timeline', 'apply'];
+
+/** 운영자가 정한 순서(편집기에서 장면을 옮기면 저장됨)를 반영한 뉴스 흐름 지침 */
+export function newsFlow(order?: string[] | null) {
+  const custom = Array.isArray(order) && order.filter((r) => FLOW_ROWS[r]).length >= 3;
+  const main = custom ? order!.filter((r, i) => FLOW_ROWS[r] && order!.indexOf(r) === i) : DEFAULT_FLOW_ORDER;
+  const optional = Object.keys(FLOW_ROWS).filter((r) => !main.includes(r));
+  return `정책자금 뉴스 브리핑 흐름 (뉴스 앵커가 공고를 브리핑하듯)${custom ? ' — ★ 운영자가 편집기에서 정한 장면 순서입니다. 이 순서를 그대로 따르세요' : ' — 기본 구성'}:
+| 순서 | role | 화면 | 내레이션 예 (앵커 브리핑체 "~습니다/~입니다") | 하단 자막 예 |
+${main.map((r, i) => FLOW_ROWS[r].replace(/^\| /, `| ${i + 1} | `)).join('\n')}
+${optional.length ? `선택(필요할 때만): ${optional.join(' · ')} — article 은 기사 카드, footage 는 첨부 영상이 있을 때 자료화면` : ''}
+규칙:
+- ${custom ? '위 순서대로 장면을 배치. 주제에 맞지 않는 장면(인용할 발언·비교 대상이 없음 등)만 빼고, 남은 장면의 앞뒤 순서는 바꾸지 말 것' : '기본 8장면(선택 포함 최대 9). 주제에 맞지 않는 장면은 빼고 6장면까지 줄여도 됨. 1(속보)과 마지막(신청)은 고정, 사이는 주제에 맞게 순서를 바꿔도 됨'}
+- 없는 사실을 지어내 장면을 채우지 말 것 · 장면마다 메시지 하나 · 숫자는 한 장면에 하나 · 모든 숫자·기관·날짜는 조사 facts 에 있는 것만
+- 말투: 뉴스 앵커 브리핑 — 짧은 평서문, 감탄·과장·반말 금지, "대표님" 호명은 첫 장면에서 한 번까지
+- 하단 자막(captions): 장면당 1줄(길면 2줄), 한 줄 18자 이내, 그 장면 내레이션의 요지를 기사 제목처럼`;
+}
+export const NEWS_FLOW = newsFlow();
+/** 레이아웃 → 뉴스 role (편집기에서 옮긴 순서를 role 순서로 바꿀 때) */
+export const LAYOUT_ROLE: Record<string, string> = Object.fromEntries(Object.entries(NEWS_ROLE_LAYOUT).map(([r, l]) => [l, r]));
 
 export const LAYER_GUIDE = `모션그래픽 레이어 (scenes[].layers — 레이아웃 위에 얹는 그래픽. 꼭 필요한 장면에만 0~4개):
 좌표: 1080×1920 세로 화면 기준 px. x,y = 왼쪽 위 (anchor "tc" 가로 가운데, "center" 정중앙).

@@ -1,5 +1,5 @@
 import React from 'react';
-import { interpolate, useCurrentFrame, useVideoConfig } from 'remotion';
+import { Img, OffthreadVideo, interpolate, useCurrentFrame, useVideoConfig } from 'remotion';
 import { Emph, alpha, countText, elT, font, fw, isLight, prog, tint, type ElKey, type SceneProps, type ShortProps } from './common';
 
 /**
@@ -8,11 +8,38 @@ import { Emph, alpha, countText, elT, font, fw, isLight, prog, tint, type ElKey,
  */
 export const NEWS_LAYOUTS: [string, string][] = [
   ['breaking', '속보 오프닝 (태그 + 큰 제목)'], ['headline', '기사 제목 카드'], ['stat', '데이터 (큰 숫자)'], ['list', '요점 번호 목록'],
-  ['compare', '비교 (두 패널)'], ['quote', '인용'], ['document', '공고문 요약'], ['timeline', '일정 (날짜|내용)'], ['cta', '안내 (신청 방법)'],
+  ['compare', '비교 (두 패널)'], ['quote', '인용'], ['document', '공고문 요약'], ['timeline', '일정 (날짜|내용)'], ['cta', '안내 (신청 방법)'], ['footage', '자료화면 (영상·이미지)'],
 ];
 export const NEWS_THEME = { bg: '#0B1424', bg2: '#0F1D33', accent: '#2B6CDF', text: '#FFFFFF', sub: '#AAB6C8', surface: '#FFFFFF', ink: '#0E1726', alert: '#D6282E', line: 'rgba(255,255,255,0.16)' };
 
 const t0 = (f: number, fps: number) => f / fps;
+
+const isVideo = (m: NonNullable<SceneProps['media']>) => m.kind ? m.kind === 'video' : /\.(mp4|mov|webm|m4v)(\?|#|$)/i.test(m.url);
+
+/** 자료 영상·이미지 한 장 (영상은 기본 무음 — 내레이션이 우선) */
+export const MediaEl: React.FC<{ m: NonNullable<SceneProps['media']>; style?: React.CSSProperties }> = ({ m, style }) => {
+  const st: React.CSSProperties = { width: '100%', height: '100%', objectFit: m.fit || 'cover', objectPosition: m.pos || 'center', display: 'block', ...style };
+  if (isVideo(m)) {
+    return <OffthreadVideo src={m.url} startFrom={Math.max(0, Math.round((m.start || 0) * 30))} muted={!m.volume} volume={m.volume || 0} style={st} />;
+  }
+  return <Img src={m.url} style={st} />;
+};
+
+/** 배경 자료화면 — footage 가 아닌 레이아웃에 media 를 넣으면 위쪽 채널 띠 아래 전체에 어둡게 깔고 천천히 확대 */
+export const SceneMediaBg: React.FC<{ s: SceneProps; p: ShortProps; len: number; k: number; W: number; H: number }> = ({ s, p, len, k, W, H }) => {
+  const f = useCurrentFrame();
+  if (!s.media?.url || s.layout === 'footage') return null;
+  const top = (p.chrome?.ticker ? 300 : 260) * (H / 1920);
+  const zoom = interpolate(f, [0, len], [1.04, 1.12]);
+  const dim = s.media.dim ?? 0.7;
+  return (
+    <div style={{ position: 'absolute', left: 0, right: 0, top, bottom: 0, overflow: 'hidden' }}>
+      <div style={{ position: 'absolute', inset: 0, transform: `scale(${zoom})` }}><MediaEl m={s.media} /></div>
+      <div style={{ position: 'absolute', inset: 0, background: `linear-gradient(180deg, ${alpha(p.theme.bg, dim * 0.85)} 0%, ${alpha(p.theme.bg, dim)} 45%, ${alpha(p.theme.bg, Math.min(1, dim + 0.25))} 100%)` }} />
+      {s.media.label && <div style={{ position: 'absolute', right: 72 * k, top: 30 * k, fontSize: 26 * k, color: 'rgba(255,255,255,.75)', fontFamily: font(p.fonts.body), fontWeight: 600, letterSpacing: '0.04em' }}>{s.media.label}</div>}
+    </div>
+  );
+};
 
 /** 글줄 마스크 리빌 (아래에서 올라옴) */
 const Reveal: React.FC<{ t: number; at: number; dur?: number; children: React.ReactNode; style?: React.CSSProperties }> = ({ t, at, dur = 0.45, children, style }) => {
@@ -294,6 +321,27 @@ export const NewsScene: React.FC<{ s: SceneProps; p: ShortProps; len: number; k:
           </div>
         )}
         {s.sub && show('sub') && <div style={{ ...T('sub', { fontSize: 38 * sc.body * k, color: th.sub, lineHeight: 1.45 }, BF, BW), marginTop: 34 * k, opacity: prog(t, 0.65, 0.4) }}>{s.sub}</div>}
+        <Source />
+      </>
+    );
+  } else if (layout === 'footage') {
+    // 자료화면: 틀 안에 영상·이미지 + '자료화면' 라벨 + 제목·설명·출처
+    const e = prog(t, 0, 0.55, 'expo');
+    const m = s.media;
+    body = (
+      <>
+        <Kicker />
+        <div style={{ position: 'relative', width: '100%', aspectRatio: '16 / 10', background: '#000', overflow: 'hidden', borderRadius: 4 * k, boxShadow: `0 ${20 * k}px ${50 * k}px rgba(0,0,0,.45)`, clipPath: `inset(0 ${(1 - e) * 100}% 0 0)`, border: `${2 * k}px solid ${th.line}` }}>
+          {m?.url ? <div style={{ position: 'absolute', inset: 0, transform: `scale(${interpolate(t, [0, len / fps], [1.0, 1.06])})` }}><MediaEl m={m} /></div>
+            : <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', color: th.sub, fontSize: 34 * k, fontFamily: font(BF) }}>자료 영상을 넣으세요 (편집기 → 장면 → 자료)</div>}
+          <span style={{ position: 'absolute', left: 24 * k, top: 24 * k, background: alpha('#000000', 0.6), color: '#fff', fontFamily: font(BF), fontWeight: 700, fontSize: 26 * k, padding: `${6 * k}px ${14 * k}px`, letterSpacing: '0.04em' }}>{m?.label || '자료화면'}</span>
+        </div>
+        {show('headline') && s.headline && (
+          <div style={{ ...T('headline', { fontSize: 70 * sc.title * k, color: th.text, lineHeight: 1.22, letterSpacing: '-0.02em' }, TF, TW), marginTop: 40 * k }}>
+            {lines(s.headline).map((ln, i) => <Reveal key={i} t={t} at={0.35 + i * 0.1}><Emph text={ln} words={s.emphasis} color={hlc} /></Reveal>)}
+          </div>
+        )}
+        {s.sub && show('sub') && <div style={{ ...T('sub', { fontSize: 38 * sc.body * k, color: th.sub, lineHeight: 1.45 }, BF, BW), marginTop: 22 * k, opacity: prog(t, 0.55, 0.4) }}>{s.sub}</div>}
         <Source />
       </>
     );

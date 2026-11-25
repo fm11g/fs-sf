@@ -1,5 +1,5 @@
 import { FONT_NAMES } from './fonts';
-import { LAYER_GUIDE, NEWS_LAYOUT_GUIDE, styleBlock } from './motion-guide';
+import { LAYER_GUIDE, NEWS_LAYOUT_GUIDE, NEWS_ROLES, newsFlow, styleBlock } from './motion-guide';
 import type { StyleSpec } from './video-style';
 import type { Settings } from './types';
 import type { Sop } from './sop';
@@ -11,8 +11,8 @@ export const todayKST = () =>
 
 const ROLE: Record<string, string> = {
   research: '조사 담당. 웹 검색(및 연결된 MCP 도구)으로 최신 공고를 확인합니다.',
-  plan: '기획 담당. 40초 세로 숏폼 구성안을 짭니다.',
-  script: '대본 작가. AI 성우가 읽을 40초 내레이션과 자막을 씁니다.',
+  plan: '기획 담당. 40초 세로 숏폼을 정책자금 뉴스 브리핑 형식으로 구성합니다.',
+  script: '뉴스 브리핑 대본 작가. 뉴스 앵커가 정책자금 공고를 브리핑하듯, AI 성우가 읽을 40초 내레이션과 기사 제목 같은 하단 자막을 씁니다.',
   offer: '전환 기획자. 영상에서 랜딩으로 넘어온 사람이 신청하게 만드는 이벤트를 설계합니다.',
   landing: '랜딩페이지 카피라이터. 슬롯별 글자수(공백 포함)를 절대 넘기지 않습니다. 줄바꿈은 \\n (글자수 제외).',
   design: `방송 뉴스 모션그래픽 디자이너. 1080x1920 세로 숏폼을 언론사처럼 공식적이고 신뢰감 있게 설계합니다.
@@ -51,12 +51,16 @@ ${FREEDOM[sop.freedom] ?? FREEDOM[2]}
 }
 
 const J = (v: any) => JSON.stringify(v);
+/** 운영자가 올린 첨부(이미지·영상) 목록 — 대사·디자인이 자료화면·참고로 씀 */
+const assetBlock = (assets?: Ctx['assets']) => assets?.length
+  ? `\n\n## 첨부 자료 (운영자가 올린 파일 — 영상은 footage 장면이나 media 로 넣을 수 있음)\n${assets.map((a) => `- [${a.kind === 'video' ? '영상' : '이미지'} #${a.id}] ${a.name || ''}${a.note ? ` — ${a.note}` : ''} · url: ${a.url}`).join('\n')}`
+  : '';
 const revise = (prev: any, feedback?: string | null) =>
   feedback
     ? `\n\n## 재작업 지시 (최우선 반영)\n${feedback}\n\n## 이전 산출물 (지시와 무관한 부분은 유지)\n${J(prev)}`
     : '';
 
-type Ctx = { s: Settings; c: any; prev?: any; feedback?: string | null; recentTopics?: string[]; slots?: any[]; brief?: string; cases?: any[]; casePositions?: number; style?: { key: string; name: string; style: StyleSpec } };
+type Ctx = { s: Settings; c: any; prev?: any; feedback?: string | null; assets?: { id: number; kind: string; url: string; name?: string; note?: string }[]; recentTopics?: string[]; slots?: any[]; brief?: string; cases?: any[]; casePositions?: number; style?: { key: string; name: string; style: StyleSpec } };
 
 export const USER: Record<string, (x: Ctx) => string> = {
   research: (ctx) => { const { c, prev, feedback, recentTopics } = ctx; return  `오늘 숏폼으로 다룰 정책자금 주제를 조사하세요.
@@ -91,20 +95,32 @@ JSON 스키마:
   "hook_options": [{ "type": "${DIMENSIONS.hook_type.values.join('|')}", "text": "" }],
   "chosen_hook": "",
   "mood": "urgent | calm | hopeful | serious",
-  "structure": [{ "id": "s1", "role": "hook|problem|info|detail|cta", "point": "이 장면에서 전달할 한 가지", "seconds": 4 }],
+  "structure": [{ "id": "s1", "role": "${NEWS_ROLES.join('|')}", "point": "이 장면에서 전달할 한 가지", "seconds": 4 }],
   "cta": "${s.cta_text} 를 자연스럽게 변형",
   ${AI_NOTES}
 }
-장면 6~8개, seconds 합계 38~42, 마지막 장면 role 은 cta. hook_options 3개는 서로 다른 type.${ctx.brief || ''}${revise(prev, feedback)}`; },
 
-  script: ({ c, prev, feedback }) => `조사: ${J(c.research)}
+${newsFlow((s as any).news_flow_order)}
+
+장면 6~9개, seconds 합계 38~42, 첫 장면 role 은 breaking(또는 article), 마지막은 apply. chosen_hook 은 1장면 내레이션이 됨. hook_options 3개는 서로 다른 type.${assetBlock(ctx.assets)}${ctx.brief || ''}${revise(prev, feedback)}`; },
+
+  script: ({ s, c, prev, feedback, assets }) => `조사: ${J(c.research)}
 기획: ${J(c.plan)}
 
-규칙: 전체 내레이션 공백 제외 210~250자. 기획 structure 의 id 그대로 장면 분할.
-captions: 내레이션을 화면 자막용으로 쪼갠 배열, 각 14자 이하(공백 포함), 순서·내용 누락 없이.
+${newsFlow((s as any).news_flow_order)}
+
+규칙:
+- 기획 structure 의 id·role 그대로 장면 분할 (role 이 기획에 없으면 위 흐름에서 고름)
+- 전체 내레이션 공백 제외 210~250자 · 앵커 브리핑체 평서문 · 장면당 1~2문장
+- captions: 화면 아래 자막. 장면당 1줄(길면 2줄), 한 줄 18자 이내(공백 포함), 그 장면의 요지를 기사 제목처럼 — 내레이션을 그대로 쪼개지 않아도 됨
+- on_screen: 그 장면 화면에 띄울 핵심(디자인이 그대로 씀). role 별 필요한 것만:
+  breaking{tag,kicker,headline} · stat{kicker,headline,value,unit,source} · points{headline,items[3]} · compare{headline,items["라벨|내용"×2]}
+  quote{headline(인용문),sub(누가)} · document{kicker(공고번호),headline(공고 제목),items[3~5]} · timeline{headline,items["날짜|내용"]}
+  apply{headline,cta} · article{kicker,headline,sub,source} · footage{media_id(첨부 영상 #번호),headline,sub}
+- 숫자·날짜·기관은 조사 facts 에 있는 것만 (없으면 그 장면을 빼고 다음 장면으로)
 
 JSON 스키마:
-{ "total_chars": 0, "scenes": [{ "id": "s1", "narration": "", "captions": [""] }], ${AI_NOTES} }${revise(prev, feedback)}`,
+{ "total_chars": 0, "scenes": [{ "id": "s1", "role": "breaking", "narration": "", "captions": [""], "on_screen": { "tag": "", "kicker": "", "headline": "", "sub": "", "value": "", "unit": "", "items": [], "cta": "", "source": "", "media_id": null } }], ${AI_NOTES} }${assetBlock(assets)}${revise(prev, feedback)}`,
 
   offer: ({ s, c, prev, feedback }) => `조사: ${J(c.research)}
 기획: ${J(c.plan)}
@@ -151,7 +167,7 @@ ${cases.map((x: any) => `- #${x.id} | ${x.industry}${x.years ? ` ${x.years}년�
 ` : ''}
 JSON 스키마: { "values": { "슬롯key": "문구" },${cases?.length ? ' "cases": [사례 id 순서],' : ''} ${AI_NOTES} } — 모든 슬롯 key 를 포함합니다(선택 슬롯은 "" 가능).${revise(prev, feedback)}`,
 
-  design: ({ c, prev, feedback, style }) => {
+  design: ({ c, prev, feedback, style, assets }) => {
     const st = style?.style;
     const news = (st?.template || 'news') === 'news';
     return `기획: ${J(c.plan)}
@@ -161,6 +177,7 @@ JSON 스키마: { "values": { "슬롯key": "문구" },${cases?.length ? ' "cases
 ${st ? styleBlock(style.name, st) : ''}
 
 장면마다 화면 그래픽을 설계하세요. 자막은 하단에 따로 나가므로 화면 글자는 핵심 단어·숫자만.
+${news ? `대본 장면의 role·on_screen 을 우선 따릅니다 — role → layout: breaking→breaking, stat→stat, points→list, compare→compare, quote→quote, document→document, timeline→timeline, apply→cta, article→headline, footage→footage. on_screen 의 글을 그대로 쓰되 글자수 규칙에 맞게만 다듬습니다. on_screen.media_id 가 있으면 첨부 목록의 그 url 을 media 로 넣습니다.` : ''}
 ${news ? NEWS_LAYOUT_GUIDE : 'layout: hook(큰 질문), stat(큰 숫자+단위), list(항목 2~4개), compare(2항목), quote(한 문장), cta(행동 유도). motion: pop, slide, typewriter, countup, zoom.'}
 글자수: headline 한 줄 10자 안팎(최대 2줄, \n), sub 24자 이하, list items 각 18자 이하, kicker 14자 이하, source 30자 이하.
 숫자·기관명·날짜는 조사 산출물에 있는 것만. 출처가 없으면 source 를 비우고 숫자 장면을 만들지 마세요.
@@ -169,11 +186,11 @@ ${LAYER_GUIDE}
 
 JSON 스키마:
 {
-  "scenes": [{ "id": "s1", "layout": "${news ? 'breaking' : 'hook'}", "kicker": "", "tag": "", "headline": "", "sub": "", "items": [], "value": "", "unit": "", "emphasis": [], "source": "", "layers": [] }],
+  "scenes": [{ "id": "s1", "layout": "${news ? 'breaking' : 'hook'}", "kicker": "", "tag": "", "headline": "", "sub": "", "items": [], "value": "", "unit": "", "emphasis": [], "source": "", "cta": "", "media": null, "layers": [] }],
   "caption_label": "하단 자막 라벨 (8자 이내, 예: 정책자금 브리핑 — 스타일에 라벨이 있을 때만)",
   "ticker": "티커 문구 (스타일이 티커를 쓸 때만, 40자 이내 · 오늘 공고 요약)",
   ${AI_NOTES}
-}${revise(prev, feedback)}`;
+}${assetBlock(assets)}${revise(prev, feedback)}`;
   },
 
   copy: ({ s, c, prev, feedback }) => `조사: ${J(c.research)}
@@ -202,13 +219,20 @@ JSON 스키마:
 숏폼 대본: ${J(c.script?.scenes?.map((x: any) => x.narration))}
 이벤트: ${J(c.offer)}
 
-- 제목 32자 이내, 본문 마크다운 2,000~3,000자, 표 1개 이상
-- 이미지 자리 4개: ![대체텍스트](IMAGE_1) … ![대체텍스트](IMAGE_4)
-- 본문 끝 "## 참고 공고"에 출처 링크, 마지막 문단에서 이벤트를 소개하고 {LINK}
+이 글은 '${s.brand}' 홈페이지 「정책자금 정보」에 그대로 발행되고(검색 유입 → 신청), 글 처음에 ## 소제목으로 목차가 자동 생성됩니다.
+- 제목 32자 이내: 검색어(자금 이름·대상·핵심 혜택)를 앞쪽에. 숏폼 제목을 그대로 쓰지 말고 검색형으로
+- meta_description 80~120자: 핵심 키워드 + 이 글에서 알 수 있는 것 + 대상(연매출 4억 이상 사업자 등)
+- keywords 5~8개: 사람들이 실제로 검색할 말 (예: "운전자금 신청 조건", "중진공 정책자금 금리")
+- 본문 마크다운 2,000~3,000자. # 제목은 쓰지 않음(페이지 제목이 따로 있음). 첫 문단 2~3문장에 결론 요약
+- ## 소제목 4~6개 (목차). 소제목만 읽어도 내용이 이해되게, 질문형·키워드형. 필요하면 ### 하위 소제목
+- 표 1개 이상 (조건·금리·한도·서류 비교 등 — 조사 산출물의 숫자만)
+- 이미지 자리 4개: ![대체텍스트](IMAGE_1) … ![대체텍스트](IMAGE_4) (대체텍스트에도 키워드)
+- 본문 끝 "## 참고 공고"에 출처 링크, 마지막 문단에서 이벤트를 소개하고 [무료 자금 진단 신청]({LINK}) — {LINK} 는 홈페이지 신청폼으로 바뀜
+- faq 3~5개: 검색에서 실제로 묻는 질문 + 2~3문장 답 (조사 근거 안에서, 승인·한도 보장 금지)
+- thumb_query: 대표 이미지로 쓸 무료 사진(Pexels·Unsplash) 영문 검색어 2~4단어. 글 주제를 보여 주는 장면·사물 위주(예: "factory machinery", "shipping containers port", "financial documents calculator"), 사람 얼굴이 크게 나오는 장면·국기·화폐 클로즈업은 피함
 
 JSON 스키마:
-{ "title": "", "meta_description": "80~120자", "keywords": [""], "body_markdown": "", "faq": [{ "q": "", "a": "" }], ${AI_NOTES} }
-faq 3~5개.${revise(prev, feedback)}`,
+{ "title": "", "meta_description": "80~120자", "keywords": [""], "category": "운전자금 | 시설자금 | 대환대출 | 창업·기술자금 | 지원사업 공고 | 신청 가이드 | 제도 변경", "thumb_query": "대표 사진 검색어(영문 2~4단어)", "thumb_query_alt": "다른 각도의 영문 검색어", "body_markdown": "", "faq": [{ "q": "", "a": "" }], ${AI_NOTES} }${revise(prev, feedback)}`,
 };
 
 /** AI 검수자: SOP 체크리스트로 채점 */

@@ -46,7 +46,7 @@ export async function saveSop(step: StepKey, patch: Partial<Pick<Sop, 'content' 
   const db = sbAdmin();
   const { error } = await db.from('sops').upsert(row);
   if (error) throw new Error(error.message);
-  await db.from('sop_versions').insert({ step, content: row.content, freedom: row.freedom, gate: row.gate, note: note || null });
+  await db.from('sop_versions').insert({ step, content: row.content, freedom: row.freedom, gate: row.gate, note: note || null, hash: sopHash(row.content) });
   return row;
 }
 
@@ -73,3 +73,38 @@ export async function commitSopToGithub(step: StepKey, content: string) {
 
 /** SOP 버전 식별자 (내용 해시 8자) — 실행·평가 기록에 남겨 버전별 점수를 비교 */
 export const sopHash = (content: string) => crypto.createHash('sha1').update(content || '').digest('hex').slice(0, 8);
+
+/**
+ * 이 SOP 내용의 버전 id — 없으면 만들어 둠 (저장소 기본 SOP 처럼 한 번도 저장 안 된 내용도 그때 전문을 남김)
+ * 예전 버전(hash 칸이 비어 있는 행)은 여기서 해시를 채워 넣음
+ */
+export async function ensureSopVersion(step: StepKey, sop: Sop): Promise<{ id: number | null; hash: string }> {
+  const db = sbAdmin();
+  const hash = sopHash(sop.content);
+  const find = async () => (await db.from('sop_versions').select('id').eq('step', step).eq('hash', hash).order('created_at', { ascending: false }).limit(1).maybeSingle()).data?.id ?? null;
+  let id = await find();
+  if (!id) {
+    const { data: old } = await db.from('sop_versions').select('id, content').eq('step', step).is('hash', null).limit(300);
+    for (const r of old || []) await db.from('sop_versions').update({ hash: sopHash(r.content) }).eq('id', r.id);
+    id = await find();
+  }
+  if (!id) {
+    const { data } = await db.from('sop_versions').insert({
+      step, content: sop.content, freedom: sop.freedom, gate: sop.gate, hash,
+      note: sop.isDefault ? '자동 기록 — 저장소 기본 SOP(sop/*.md)가 처음 쓰인 시점' : '자동 기록 — 처음 쓰인 시점',
+    }).select('id').single();
+    id = data?.id ?? null;
+  }
+  return { id, hash };
+}
+
+/** SOP 사용 기록 — 결과물이 만들어질 때마다 (실패해도 파이프라인은 계속) */
+export async function recordSopUse(step: StepKey, sop: Sop, contentId: string, x: { outcome: string; decided_by?: string | null; provider?: string | null; model?: string | null; feedback?: boolean; attempt?: number }) {
+  try {
+    const v = await ensureSopVersion(step, sop);
+    await sbAdmin().from('sop_usage').insert({
+      step, sop_hash: v.hash, version_id: v.id, content_id: contentId, outcome: x.outcome, decided_by: x.decided_by ?? null,
+      freedom: sop.freedom, gate: sop.gate, provider: x.provider ?? null, model: x.model ?? null, feedback: !!x.feedback, attempt: x.attempt ?? null,
+    });
+  } catch { /* 015 마이그레이션 전이면 기록만 건너뜀 */ }
+}

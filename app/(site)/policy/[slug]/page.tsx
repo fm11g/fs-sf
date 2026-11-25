@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { notFound } from 'next/navigation';
+import { notFound, permanentRedirect } from 'next/navigation';
 import { marked } from 'marked';
 import { getPost } from '@/lib/posts';
 import { hydrateEnv, siteUrl } from '@/lib/secrets';
@@ -10,11 +10,12 @@ export const revalidate = 600;
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
   const p = await getPost(params.slug);
   if (!p?.post) return {};
+  const canonical = p.site_post?.url || `/policy/${p.slug}`;
   return {
     title: p.post.title,
     description: p.post.meta_description,
     keywords: p.post.keywords,
-    alternates: { canonical: `/policy/${p.slug}` },
+    alternates: { canonical },
     openGraph: { type: 'article', title: p.post.title, description: p.post.meta_description, images: p.thumbnail_url ? [p.thumbnail_url] : [], publishedTime: p.published_at || undefined },
   };
 }
@@ -24,10 +25,13 @@ export default async function PostPage({ params }: { params: { slug: string } })
   const SITE = siteUrl();
   const p = await getPost(params.slug);
   if (!p?.post) notFound();
+  // 홈페이지 「정책자금 정보」에 발행된 글이면 그쪽이 정본 (검색 점수 분산 방지)
+  if (p.site_post?.url && /^https?:\/\//.test(p.site_post.url)) permanentRedirect(p.site_post.url);
   const images: { url: string; alt?: string }[] = p.images || [];
   let md: string = p.post.body_markdown || '';
   images.forEach((img, i) => { md = md.split(`IMAGE_${i + 1}`).join(img.url); });
   md = md.replace(/!\[[^\]]*\]\(IMAGE_\d+\)/g, ''); // 남은 자리 제거
+  md = md.split('{LINK}').join(`/l/${p.slug}?utm_source=blog&utm_medium=post&utm_campaign=${p.slug}`);
   const html = await marked.parse(md);
   const landing = `/l/${p.slug}?utm_source=blog&utm_medium=post&utm_campaign=${p.slug}`;
 

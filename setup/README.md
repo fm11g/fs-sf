@@ -2,7 +2,7 @@
 
 ## 1. Supabase
 1. 새 프로젝트 생성 (리전: Northeast Asia (Seoul))
-2. **SQL Editor → New query** → `supabase-all-in-one.sql` 전체 붙여넣기 → **Run** → 마지막에 테이블 24개 목록이 나오면 완료
+2. **SQL Editor → New query** → `supabase-all-in-one.sql` 전체 붙여넣기 → **Run** → 마지막에 테이블 25개 목록이 나오면 완료
    (예전 버전 SQL 을 이미 실행했어도 그대로 다시 실행하면 됩니다)
 3. **Project Settings → API** 에서 Project URL · anon public · service_role 키 복사
 4. 관리자 계정은 여기서 만들지 않습니다 → 4단계 첫 가입에서 만듭니다
@@ -24,5 +24,8 @@
 3. **AI 모델** 메뉴: 작업마다 Claude 모델과 생각 깊이 선택 (기본은 추천 분류: 깊은 생각 / 보통 / 빠른 처리)
 4. **직원 · 권한** 메뉴: 직원 추가(아이디 + 임시 비밀번호) → 볼 수 있는 블록(화면·공정 단계)과 보기/작업 권한 지정
 5. 현황판 → 새 숏폼 → "가능한 곳까지 자동 진행"
+
+## 5. 오늘의 정책자금 홈페이지 연동 (숏폼별 DB 추적)
+[docs/SITE-TRACKING.md](../docs/SITE-TRACKING.md) — 홈페이지 관리자 `FACTORY_API_KEY` 와 같은 값을 [연결·키 > TPF_ADMIN_KEY] 에, [설정 > 홈페이지 연동]에 홈페이지·관리자 주소.
 
 Vercel 환경변수에 같은 이름의 값이 있어도 관리자 페이지에 저장한 값이 우선합니다.

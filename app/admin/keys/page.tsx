@@ -79,7 +79,23 @@ export default function Keys() {
       )}
       {yt === 'ok' && <div className="card ok">유튜브 계정 연결 완료 — 리프레시 토큰이 저장되었습니다.</div>}
       {yt === 'norefresh' && <div className="card bad">리프레시 토큰이 오지 않았습니다. Google 계정 → 보안 → 타사 앱 연결에서 이 앱을 해제한 뒤 다시 연결하세요.</div>}
-      {yt === 'noclient' && <div className="card bad">유튜브 OAuth 클라이언트 ID·보안 비밀을 먼저 저장하세요.</div>}
+      {yt === 'noclient' && (() => {
+        const q = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
+        const host = q.get('host'), miss = q.get('missing'), db = q.get('db');
+        const here = typeof window !== 'undefined' ? window.location.host : '';
+        const myDb = (d?.supabase_ref || '');
+        return (
+          <div className="card bad">
+            <b>유튜브 연결 실패 — 서버가 {miss ? miss.split(',').map((k) => k === 'YT_CLIENT_ID' ? '클라이언트 ID' : '보안 비밀').join('·') : '클라이언트 ID·보안 비밀'}을(를) 못 읽음</b>
+            {host && <div style={{ fontSize: 13, marginTop: 6 }}>연결을 시도한 사이트: <code>{host}</code>{db ? <> · DB <code>{db}</code></> : null}{myDb ? <> / 지금 이 화면의 DB <code>{myDb}</code></> : null}</div>}
+            <ul style={{ fontSize: 13, margin: '6px 0 0', paddingLeft: 18 }}>
+              {host && host !== here && <li>지금 보고 있는 주소(<code>{here}</code>)와 연결을 시도한 주소가 다릅니다 → <a href={`https://${host}/admin/keys`}><b>{host}</b> 의 [연결·키]</a>를 열어 클라이언트 ID·보안 비밀이 저장돼 있는지 보고, 없으면 거기에 저장하세요.</li>}
+              {db && myDb && db !== myDb && <li><b>두 주소가 서로 다른 Supabase 를 씁니다.</b> Vercel → Settings → Environment Variables 에서 Production·Preview 의 NEXT_PUBLIC_SUPABASE_URL 이 같은지 확인하세요.</li>}
+              <li>값이 저장돼 있는데도 이 문구가 보이면 주소창 끝의 <code>?yt=noclient…</code>를 지우고 새로고침한 뒤 [유튜브 계정 연결]을 다시 누르세요 (예전 실패 문구가 남아 있는 것일 수 있음).</li>
+            </ul>
+          </div>
+        );
+      })()}
       {yt === 'fail' && <div className="card bad">유튜브 연결 실패: {q?.get('msg')}</div>}
       {note && <div className="card">{note}</div>}
 
@@ -114,6 +130,16 @@ export default function Keys() {
               </>}
             </div>
           </div>
+          {g.group === '유튜브' && d.yt_redirect && (
+            <div style={{ background: '#f4f7ff', border: '1px solid #c9d7f5', borderRadius: 8, padding: '10px 12px', margin: '10px 0 4px', fontSize: 13 }}>
+              구글 OAuth 클라이언트 → <b>승인된 리디렉션 URI</b>에 이 주소를 그대로 등록하세요 (JavaScript 원본은 비워 둠):
+              <div className="row" style={{ gap: 6, marginTop: 4 }}>
+                <code style={{ background: '#fff', border: '1px solid #dde3ee', borderRadius: 6, padding: '4px 8px', fontSize: 12, userSelect: 'all' }}>{d.yt_redirect}</code>
+                <button onClick={() => { navigator.clipboard.writeText(d.yt_redirect); setNote('리디렉션 URI 복사됨'); }}>복사</button>
+              </div>
+              <span className="mute">[유튜브 계정 연결]은 이 주소의 사이트에서 진행됩니다 (다른 주소로 접속해 있으면 자동으로 옮김 — 처음이면 그 주소에서 로그인 필요)</span>
+            </div>
+          )}
           {keys.filter((k) => k.group === g.group).map((k) => {
             const editingVal = vals[k.key];
             const Input: any = k.multiline ? 'textarea' : 'input';

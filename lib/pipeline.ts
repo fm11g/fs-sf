@@ -1,6 +1,7 @@
 import { siteUrl } from './secrets';
 import { StopError, watchStep } from './stop';
 import { limitsOf } from './limits';
+import { NEWS_ROLE_LAYOUT, NEWS_ROLES } from './motion-guide';
 import { markUsed, referenceBlock } from './references';
 import { ask, type Usage } from './llm';
 import { USER, buildSystem, reviewPrompt } from './prompts';
@@ -15,8 +16,9 @@ import { getOutput, getSettings } from './settings';
 import { notify } from './notify';
 import { fewShotBlock, judgeCandidates, learnCounts, recordEditExemplar } from './learn';
 import { exportNow, exportRun } from './export';
-import { sopHash } from './sop';
+import { recordSopUse, sopHash } from './sop';
 import { editorialBrief, noveltyChecks } from './editorial';
+import { siteLinks } from './tpf-site';
 export { getOutput, getSettings };
 import { STEP_DEFS, STEP_KEYS, downstream, stepDef, type StepKey } from './steps';
 import type { Settings, StepRow } from './types';
@@ -97,16 +99,22 @@ export function lint(step: StepKey, out: any, c: any, s: Settings, extra: { slot
     const st = out?.structure || [];
     const sum = st.reduce((n: number, x: any) => n + Number(x.seconds || 0), 0);
     if (sum < 36 || sum > 44) warn(`장면 합계 ${sum}초 (38~42 권장)`);
-    if (st.length && st[st.length - 1].role !== 'cta') err('마지막 장면이 cta 가 아님');
-    if (st.length < 5 || st.length > 9) warn(`장면 ${st.length}개 (6~8 권장)`);
+    const last = st[st.length - 1]?.role;
+    if (st.length && last !== 'apply' && last !== 'cta') err('마지막 장면이 apply(신청 안내)가 아님');
+    if (st.length && !['breaking', 'article', 'hook'].includes(st[0].role)) warn(`첫 장면 role 이 ${st[0].role} — 뉴스 브리핑은 breaking(속보) 또는 article 로 시작`);
+    if (st.length < 5 || st.length > 9) warn(`장면 ${st.length}개 (6~9 권장)`);
   }
   if (step === 'script') {
     const sc = out?.scenes || [];
     const total = sc.reduce((n: number, x: any) => n + charsNoSpace(x.narration), 0);
     if (total < 195 || total > 265) err(`내레이션 ${total}자 (210~250자 필요)`);
     else if (total < 210 || total > 250) warn(`내레이션 ${total}자 (210~250 권장)`);
-    const long = sc.flatMap((x: any) => x.captions || []).filter((t: string) => charLen(t) > 14).length;
-    if (long) warn(`14자 넘는 자막 ${long}컷`);
+    const long = sc.flatMap((x: any) => x.captions || []).filter((t: string) => charLen(t) > 18).length;
+    if (long) warn(`18자 넘는 자막 ${long}줄 (하단 자막 한 줄 18자 이내)`);
+    const many = sc.filter((x: any) => (x.captions || []).length > 2).map((x: any) => x.id);
+    if (many.length) warn(`자막이 3줄 이상인 장면: ${many.join(', ')} (뉴스 하단 자막은 장면당 1~2줄)`);
+    const noRole = sc.filter((x: any) => !NEWS_ROLES.includes(x.role)).map((x: any) => x.id);
+    if (noRole.length) warn(`role 이 없거나 뉴스 흐름에 없는 장면: ${noRole.join(', ')}`);
     const planIds = (c.plan?.structure || []).map((x: any) => x.id).join(',');
     if (planIds && planIds !== sc.map((x: any) => x.id).join(',')) warn('장면 id 가 기획과 다름');
   }
@@ -151,6 +159,7 @@ export function lint(step: StepKey, out: any, c: any, s: Settings, extra: { slot
     if (charLen(y.title || '') > 100) err('유튜브 제목 100자 초과'); else if (charLen(y.title || '') > 45) warn('유튜브 제목 40자 초과');
     if (!/https?:\/\//.test(y.comment || '')) err('유튜브 댓글에 링크 없음');
     if (!/https?:\/\//.test(i.caption || '')) err('인스타 캡션에 링크 없음');
+    if (siteLinks(s, c) && !/go\.html\?c=/.test(`${y.description || ''}${i.caption || ''}`)) warn('홈페이지 추적 링크(go.html?c=코드)가 없음 — 이 숏폼의 DB가 집계되지 않습니다');
     if (charLen(i.caption || '') > 2200) err('인스타 캡션 2,200자 초과');
     if (((i.caption || '').match(/#/g) || []).length > 30) err('해시태그 30개 초과');
   }
@@ -161,6 +170,12 @@ export function lint(step: StepKey, out: any, c: any, s: Settings, extra: { slot
     const md = charLen(out?.meta_description || '');
     if (md < 60 || md > 140) warn(`메타 설명 ${md}자 (80~120 권장)`);
     if (!/\|.*\|/.test(out?.body_markdown || '')) warn('표가 없음');
+    // 홈페이지 정보글 목차(TOC)는 ## 소제목으로 만들어짐 → 검색 노출 구조
+    const h2 = (String(out?.body_markdown || '').match(/^##\s+\S/gm) || []).length;
+    if (h2 < 3) warn(`## 소제목 ${h2}개 (목차용 3개 이상 권장)`);
+    if (!String(out?.body_markdown || '').includes('{LINK}')) warn('본문에 {LINK}(신청 안내) 없음');
+    if ((out?.faq || []).length < 3) warn(`FAQ ${(out?.faq || []).length}개 (3~5개 권장 · 검색 FAQ 구조화 데이터)`);
+    if ((out?.keywords || []).length < 3) warn('키워드 3개 미만');
   }
   if (!r.length) r.push({ level: 'ok', msg: '규칙 검사 통과' });
   return r;
@@ -168,11 +183,11 @@ export function lint(step: StepKey, out: any, c: any, s: Settings, extra: { slot
 const hasError = (c: Check[]) => c.some((x) => x.level === 'error');
 
 // ── 생성: 준비(prepare) → LLM 또는 에이전트 → 마무리(finalize) ─────────
-type Prep = { system: string; prompt: string; webSearch: boolean; maxTokens: number; slots?: any[]; tpl?: any; refs?: number[]; refVideos?: number[]; cases?: LandingCase[]; casePos?: Record<number, CaseField[]>; style?: StyleRow };
+type Prep = { system: string; prompt: string; webSearch: boolean; maxTokens: number; slots?: any[]; tpl?: any; refs?: number[]; refVideos?: number[]; cases?: LandingCase[]; casePos?: Record<number, CaseField[]>; style?: StyleRow; assets?: { id: number; kind: string; url: string; name?: string; note?: string }[]; images?: string[] };
 type Gen = { output: any; notes: any; usage: Usage; slots?: any[]; provider?: string; model?: string; tried?: any[]; input?: { system: string; prompt: string }; candidates?: number; pred_score?: number | null; judge?: any; refs?: number[] };
 
 /** 이 단계에서 모델(또는 에이전트)이 받을 지시문 전체 */
-async function prepare(step: StepKey, c: any, s: Settings, sop: Sop, feedback?: string | null): Promise<Prep> {
+async function prepare(step: StepKey, c: any, s: Settings, sop: Sop, feedback?: string | null, attach?: number[]): Promise<Prep> {
   const db = sbAdmin();
   const prev = feedback ? await getOutput(step, c) : undefined;
   const ctx: any = { s, c, prev, feedback };
@@ -201,6 +216,19 @@ async function prepare(step: StepKey, c: any, s: Settings, sop: Sop, feedback?: 
     }
   }
   if (step === 'design') prep.style = ctx.style = await styleFor(c);
+  // 첨부 파일: 기획·대사·디자인은 전체 목록(자료화면 후보), 피드백에 붙인 이미지는 AI 가 직접 봄(비전)
+  try {
+    const { data: rows } = await db.from('content_assets').select('id, kind, url, name, note, step').eq('content_id', c.id).order('created_at');
+    const all = (rows || []) as any[];
+    if (['plan', 'script', 'design'].includes(step)) prep.assets = ctx.assets = all;
+    const att = all.filter((a) => attach?.includes(a.id));
+    if (att.length && feedback) {
+      prep.images = att.filter((a) => a.kind === 'image').map((a) => a.url).slice(0, 8);
+      ctx.feedback = `${feedback}\n\n[피드백 첨부] ${att.map((a) => `${a.kind === 'video' ? '영상' : '이미지'} #${a.id} ${a.name || ''}${a.note ? ` (${a.note})` : ''}`).join(' · ')}`
+        + (prep.images.length ? '\n첨부 이미지는 함께 보낸 그림입니다 — 지시에서 가리키는 부분(색·배치·문구·느낌)을 그대로 반영하세요.' : '')
+        + (att.some((a) => a.kind === 'video') ? `\n첨부 영상은 ${step === 'design' ? '해당 장면 media 로 넣으세요(url 은 첨부 목록 참고)' : '자료화면(footage 장면) 후보입니다'}.` : '');
+    }
+  } catch { /* 첨부 테이블 없음(마이그레이션 전) */ }
   if (step === 'research' || step === 'plan') { try { ctx.brief = await editorialBrief(c, step); } catch { /* 편성 없음 */ } }
   prep.system = buildSystem(s, step, sop);
   prep.prompt = USER[step](ctx);
@@ -234,7 +262,27 @@ async function finalize(step: StepKey, c: any, s: Settings, raw: any, prep: Prep
     // 스타일 프리셋(색·폰트·굵기·자막·화면 장식)을 그대로 적용 — AI 는 장면 구성·문구·레이어만
     const st = prep.style || (await styleFor(c));
     const { caption_label, ticker, ...rest } = out;
-    out = { ...rest, scenes: (out.scenes || []).map((x: any) => ({ ...x, layers: cleanLayers(x.layers) })) };
+    // 대본의 role·on_screen 으로 빈 레이아웃·문구를 채우고, 첨부 번호(media_id)를 실제 파일 주소로
+    const byId = new Map((c.script?.scenes || []).map((x: any) => [x.id, x]));
+    const assets: any[] = prep.assets || [];
+    const mediaOf = (m: any, os: any) => {
+      const pick = (id: any) => assets.find((a) => a.id === Number(id));
+      if (m && typeof m === 'object' && m.url) return { kind: /\.(mp4|mov|webm|m4v)(\?|$)/i.test(m.url) ? 'video' : m.kind || 'image', fit: 'cover', ...m };
+      const a = pick(typeof m === 'number' || /^\d+$/.test(String(m || '')) ? m : os?.media_id);
+      return a ? { url: a.url, kind: a.kind, fit: 'cover', label: '자료화면' } : undefined;
+    };
+    out = { ...rest, scenes: (out.scenes || []).map((x: any) => {
+      const sc: any = byId.get(x.id) || {};
+      const os = sc.on_screen || {};
+      const y: any = { ...x, layers: cleanLayers(x.layers) };
+      if (!y.layout && NEWS_ROLE_LAYOUT[sc.role]) y.layout = NEWS_ROLE_LAYOUT[sc.role];
+      for (const k of ['tag', 'kicker', 'headline', 'sub', 'value', 'unit', 'cta', 'source']) if (!y[k] && os[k]) y[k] = os[k];
+      if ((!y.items || !y.items.length) && Array.isArray(os.items) && os.items.length) y.items = os.items;
+      const media = mediaOf(y.media, os);
+      if (media) y.media = media; else delete y.media;
+      if (y.layout === 'footage' && !y.media) y.layout = 'headline'; // 첨부 영상이 없으면 자료화면 대신 기사 카드
+      return y;
+    }) };
     out = applyStyle(out, st.style);
     out.style_key = st.key;
     if (st.style.caption.label && typeof caption_label === 'string' && caption_label.trim()) out.caption.label = caption_label.trim().slice(0, 12);
@@ -242,17 +290,21 @@ async function finalize(step: StepKey, c: any, s: Settings, raw: any, prep: Prep
     if (c.design?.size) out.size = c.design.size; // 편집기에서 바꾼 영상 크기 유지
   }
   if (step === 'copy') {
-    const yt = landingLink(s, c.slug, 'youtube');
-    const ig = landingLink(s, c.slug, 'instagram');
-    const r = (t: string, link: string) => (t || '').split('{LINK}').join(link);
+    // 홈페이지 연동(설정 tpf_site_url)이 있으면 자리마다 다른 추적 링크 — 어느 숏폼 · 어느 자리에서 신청이 났는지 홈페이지 관리자에서 집계
+    //   유튜브 설명 ch=yt · 고정 댓글 ytc · 인스타 캡션 ig · 첫 댓글 igc (코드 = contents.track_code)
+    const t = siteLinks(s, c);
+    const yt = t?.yt ?? landingLink(s, c.slug, 'youtube');
+    const ytc = t?.ytc ?? yt;
+    const ig = t?.ig ?? landingLink(s, c.slug, 'instagram');
+    const igc = t?.igc ?? ig;
+    const r = (x: string, link: string) => (x || '').split('{LINK}').join(link);
     out = {
-      youtube: { ...out.youtube, description: r(out.youtube?.description, yt), comment: r(out.youtube?.comment, yt), link: yt },
-      instagram: { ...out.instagram, caption: r(out.instagram?.caption, ig), first_comment: r(out.instagram?.first_comment, ig), link: ig },
+      youtube: { ...out.youtube, description: r(out.youtube?.description, yt), comment: r(out.youtube?.comment, ytc), link: yt },
+      instagram: { ...out.instagram, caption: r(out.instagram?.caption, ig), first_comment: r(out.instagram?.first_comment, igc), link: ig, ...(t ? { profile_link: t.profile } : {}) },
+      ...(t ? { track_code: t.code } : {}),
     };
   }
-  if (step === 'post') {
-    out.body_markdown = String(out.body_markdown || '').split('{LINK}').join(landingLink(s, c.slug, 'blog'));
-  }
+  // post: {LINK} 는 그대로 둔다 — 홈페이지 정보글에서는 같은 페이지 하단 신청폼(#fundForm), 공장 /policy 페이지에서는 공장 랜딩으로 바뀜
 
   if (step === 'landing') {
     const slots = prep.slots || [];
@@ -302,10 +354,10 @@ async function finalize(step: StepKey, c: any, s: Settings, raw: any, prep: Prep
   return { output: out, notes, usage };
 }
 
-async function generate(step: StepKey, c: any, s: Settings, sop: Sop, feedback?: string | null, prefer?: string | null): Promise<Gen> {
-  const prep = await prepare(step, c, s, sop, feedback);
+async function generate(step: StepKey, c: any, s: Settings, sop: Sop, feedback?: string | null, prefer?: string | null, attach?: number[]): Promise<Gen> {
+  const prep = await prepare(step, c, s, sop, feedback, attach);
   const req = {
-    system: prep.system, prompt: prep.prompt, webSearch: prep.webSearch, maxTokens: prep.maxTokens,
+    system: prep.system, prompt: prep.prompt, webSearch: prep.webSearch, maxTokens: prep.maxTokens, images: prep.images,
     mcp: step === 'research' ? s.mcp_servers : undefined,
     chain: s.llm_chain, prefer: prefer || sop.provider, task: step, meta: { contentId: c.id, step },
   };
@@ -418,7 +470,7 @@ async function settle(step: StepKey, contentId: string, row: StepRow, s: Setting
 }
 
 // ── 단계 실행 (서버 LLM 체인) ───────────────────────────────────────
-export async function runStep(step: StepKey, contentId: string, opts: { feedback?: string; force?: boolean; provider?: string } = {}) {
+export async function runStep(step: StepKey, contentId: string, opts: { feedback?: string; force?: boolean; provider?: string; attachments?: number[] } = {}) {
   const def = stepDef(step);
   if (!def || def.kind !== 'ai') throw new Error(`'${step}' 는 AI 단계가 아닙니다 (렌더·업로드는 워커가 실행)`);
   const c = await loadContent(contentId);
@@ -439,9 +491,12 @@ export async function runStep(step: StepKey, contentId: string, opts: { feedback
   const race = <T,>(p: Promise<T>) => Promise.race([p, w.promise]) as Promise<T>;
 
   try {
-    const gen = await race(generate(step, c, s, sop, feedback, opts.provider));
-    return await race(settle(step, contentId, row, s, sop, gen, t0,
+    const gen = await race(generate(step, c, s, sop, feedback, opts.provider, opts.attachments));
+    const res = await race(settle(step, contentId, row, s, sop, gen, t0,
       async (fb) => race(generate(step, await loadContent(contentId), s, sop, fb, opts.provider)), w.check));
+    // SOP 사용 기록: 이 결과물에 어떤 SOP 버전이 쓰였는지 (SOP 화면 → 버전별 사용 이력)
+    await recordSopUse(step, sop, contentId, { outcome: res.state, decided_by: res.decided_by, provider: res.provider, model: res.model, feedback: !!feedback, attempt: row.attempts + 1 });
+    return res;
   } catch (e: any) {
     if (e instanceof StopError) {
       const ms = Date.now() - t0;
@@ -453,6 +508,7 @@ export async function runStep(step: StepKey, contentId: string, opts: { feedback
         await log(contentId, step, 'timeout', e.message);
         await notify('step_failed', { contentId, step, message: e.message });
       }
+      await recordSopUse(step, sop, contentId, { outcome: e.kind === 'timeout' ? 'failed' : 'stopped', feedback: !!feedback, attempt: row.attempts + 1 });
       return { step, state: 'failed', stopped: e.kind, message: e.message };
     }
     // 이미 중지된 실행이면 실패 기록으로 덮어쓰지 않음
@@ -461,6 +517,7 @@ export async function runStep(step: StepKey, contentId: string, opts: { feedback
     await sbAdmin().from('contents').update({ error: `[${step}] ${e.message}` }).eq('id', contentId);
     await log(contentId, step, 'failed', e.message);
     await notify('step_failed', { contentId, step, message: e.message });
+    await recordSopUse(step, sop, contentId, { outcome: 'failed', provider: opts.provider || null, feedback: !!feedback, attempt: row.attempts + 1 });
     await exportNow(() => exportRun(contentId, step, e.message));
     throw e;
   } finally {

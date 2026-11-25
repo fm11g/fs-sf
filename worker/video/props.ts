@@ -24,8 +24,15 @@ export const estimateSec = (text: string) => Math.max(1.6, (text || '').replace(
 
 export function buildProps(c: any, o: { brand: string; dateLabel: string; audio?: { id: string; url: string; duration: number }[]; bgmUrl?: string | null }): ShortProps {
   const d = c.design || {};
-  const scenes: SceneProps[] = (c.script?.scenes || []).map((sc: any) => {
-    const g = (d.scenes || []).find((x: any) => x.id === sc.id) || { layout: 'quote', headline: sc.captions?.[0] || '' };
+  // 장면 순서: 편집기에서 옮긴 순서(design.scene_order)가 있으면 그 순서, 없으면 대사 순서. 목소리·자막은 id 로 따라감
+  const order: string[] = Array.isArray(d.scene_order) ? d.scene_order : [];
+  const rank = (id: string) => { const i = order.indexOf(id); return i < 0 ? 1000 : i; };
+  const ordered = [...(c.script?.scenes || [])].map((x: any, i: number) => ({ x, i })).sort((a, b) => rank(a.x.id) - rank(b.x.id) || a.i - b.i).map((v) => v.x);
+  const scenes: SceneProps[] = ordered.map((sc: any) => {
+    // 디자인이 없는 장면: 대본의 뉴스 role·on_screen 으로 화면 구성 (없으면 자막 첫 줄을 인용 카드로)
+    const ROLE: Record<string, string> = { breaking: 'breaking', stat: 'stat', points: 'list', compare: 'compare', quote: 'quote', document: 'document', timeline: 'timeline', apply: 'cta', article: 'headline', footage: 'footage' };
+    const g = (d.scenes || []).find((x: any) => x.id === sc.id)
+      || (sc.on_screen && ROLE[sc.role] ? { layout: ROLE[sc.role], ...sc.on_screen, headline: sc.on_screen.headline || sc.captions?.[0] || '' } : { layout: 'quote', headline: sc.captions?.[0] || '' });
     const a = o.audio?.find((x) => x.id === sc.id);
     const narration = narrationOf(sc, g);
     const hold = Math.max(-1, Math.min(5, Number(g.hold || 0)));

@@ -12,6 +12,9 @@ import ModelChip from './ModelChip';
 import UsagePanel from '../../UsagePanel';
 import RenderProgress from './RenderProgress';
 import StopBar from './StopBar';
+import SiteBox from './SiteBox';
+import { AssetLibrary, FeedbackAttach } from './Attachments';
+import type { Asset } from '@/lib/assets-client';
 
 const fmtMs = (ms: number) => (ms >= 60000 ? `${Math.round(ms / 6000) / 10}분` : `${Math.round(ms / 1000)}초`);
 
@@ -25,6 +28,8 @@ export default function Workbench({ params }: { params: { id: string } }) {
   const [sel, setSel] = useState<StepKey | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState('');
+  const [attach, setAttach] = useState<Asset[]>([]); // 수정 지시에 붙인 이미지·영상
+  const [assetTick, setAssetTick] = useState(0);
   const [edit, setEdit] = useState(false);
   const [exemplars, setExemplars] = useState<any[]>([]);
   const [learnMsg, setLearnMsg] = useState<{ text: string; step?: string } | null>(null);
@@ -72,9 +77,9 @@ export default function Workbench({ params }: { params: { id: string } }) {
   const run = (feedback?: string) => act('run', async () => {
     setRunAt(Date.now());
     try {
-      const r = await api(`/api/pipeline/${sel}`, { contentId: c.id, feedback });
+      const r = await api(`/api/pipeline/${sel}`, { contentId: c.id, feedback, attachments: feedback ? attach.map((a) => a.id) : undefined });
       if (r?.stopped === 'timeout') alert(`⏱ ${r.message}\n모델을 가볍게 바꾸거나(모델 설정) 제한 시간(설정)을 늘린 뒤 다시 실행하세요.`);
-      setNote('');
+      setNote(''); setAttach([]); setAssetTick((x) => x + 1);
     } finally { setRunAt(null); }
   });
   /** 강제 중지 — AI 단계는 진행 중 표시를 바로 풀고 결과를 버림, 자동 진행 반복도 멈춤 */
@@ -150,6 +155,7 @@ export default function Workbench({ params }: { params: { id: string } }) {
             extra={busy === 'auto' ? <span className="mute">· 자동 진행 중</span> : sel !== r.key ? <a href="#" onClick={(e) => { e.preventDefault(); setSel(r.key as StepKey); }}>이 단계 보기</a> : null} />
         );
       })()}
+      <AssetLibrary contentId={c.id} canWork={mayWork || can(me, 'board', 'work')} refreshKey={assetTick} />
       <UsagePanel query={`content_id=${c.id}`} title="이 숏폼 전체 API 사용" refreshKey={Object.values(steps).map((r: any) => r?.finished_at).join()} />
       <div style={{ height: 14 }} />
       {c.error && <div className="card bad">{c.error}</div>}
@@ -182,7 +188,7 @@ export default function Workbench({ params }: { params: { id: string } }) {
               <h2 style={{ margin: 0 }}>{def.no}. {def.label} <span className={`tag ${row.state}`}>{STATE_KO[row.state]}</span> {def.kind === 'ai' && <ModelChip step={sel} owner={me?.role === 'owner'} />}</h2>
               <span className="mute">
                 결정: {GATE_KO[sop?.gate] || '-'} · 자유도 {FREEDOM_KO[sop?.freedom ?? 2]} · 시도 {row.attempts}회
-                {row.provider && ` · 지난 실행 ${row.provider}${row.model ? '/' + row.model : ''}`}{row.work_ms > 0 && ` · 작업 ${fmtMs(Number(row.work_ms))}`}{row.wait_ms > 0 && ` · 대기 ${fmtMs(Number(row.wait_ms))}`} {can(me, 'sop') && <>· <Link href={`/admin/sop?step=${sel}`}>SOP 수정</Link></>}
+                {row.provider && ` · 지난 실행 ${row.provider}${row.model ? '/' + row.model : ''}`}{row.work_ms > 0 && ` · 작업 ${fmtMs(Number(row.work_ms))}`}{row.wait_ms > 0 && ` · 대기 ${fmtMs(Number(row.wait_ms))}`} {can(me, 'sop') && <>· {row.sop_hash && <><Link href={`/admin/sop?step=${sel}&v=${row.sop_hash}`} title="이 결과물을 만들 때 쓰인 SOP 버전 — 전문·같은 버전으로 만든 다른 결과물">SOP 버전 {row.sop_hash}</Link> · </>}<Link href={`/admin/sop?step=${sel}`}>SOP 수정</Link></>}
               </span>
             </div>
             <UsagePanel query={`content_id=${c.id}&step=${sel}`} title="이 단계 API 사용" compact refreshKey={`${row.finished_at}|${row.attempts}|${row.ai_review?.score ?? ''}`} />
@@ -220,6 +226,7 @@ export default function Workbench({ params }: { params: { id: string } }) {
                     </div>
                   </div>
                 )}
+                {output != null && <FeedbackAttach contentId={c.id} step={sel} selected={attach} setSelected={(a) => { setAttach(a); setAssetTick((x) => x + 1); }} disabled={!!busy} />}
               </>
             )}
 
@@ -328,12 +335,13 @@ export default function Workbench({ params }: { params: { id: string } }) {
                     {(row.checks || []).map((k, i) => <div key={i} className={`check ${k.level}`}>{k.msg}</div>)}
                     {c.youtube_id && <p>YouTube: <a href={`https://youtube.com/shorts/${c.youtube_id}`} target="_blank">{c.youtube_id}</a> <span className="mute">← 스튜디오에서 댓글 고정</span></p>}
                     {c.instagram_id && <p>Instagram 미디어 ID: {c.instagram_id}</p>}
-                    {c.published_at && <p>정보글: <a href={`/policy/${c.slug}`} target="_blank">/policy/{c.slug}</a> · 랜딩: <a href={`/l/${c.slug}`} target="_blank">/l/{c.slug}</a></p>}
+                    {c.published_at && <p>정보글: <a href={(c as any).site_post?.url || `/policy/${c.slug}`} target="_blank">{(c as any).site_post?.url ? '홈페이지 정보글' : `/policy/${c.slug}`}</a> · 랜딩: <a href={`/l/${c.slug}`} target="_blank">/l/{c.slug}</a></p>}
                   </div>
                 </div>
               ) : <p className="mute">아직 렌더된 영상이 없습니다.</p>}
             </div>
           )}
+          {(sel === 'publish' || sel === 'copy' || sel === 'post') && <SiteBox c={c} onDone={load} />}
 
           <details className="card">
             <summary><b>실행 로그</b></summary>
