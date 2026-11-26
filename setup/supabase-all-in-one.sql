@@ -880,12 +880,49 @@ update public.settings set value = value
   || jsonb_build_object(
     'perf_weights', case when coalesce(value->'perf_weights', '{}'::jsonb) ? 'leads' then value->'perf_weights'   -- 이미 DB 가중치를 정했으면 유지
       else jsonb_build_object('leads', 0.40, 'views', 0.12, 'engagement', 0.10, 'shares', 0.10, 'comments', 0.10, 'subscribers', 0.10, 'retention', 0.05, 'conversion', 0.03) end,
-    'tpf_site_url', coalesce(value->>'tpf_site_url', ''),      -- 예: https://todayfund.co.kr  (go.html 추적 링크 · 정보글 주소)
+    'tpf_site_url', coalesce(value->>'tpf_site_url', ''),      -- 예: https://todaypolicyfund.co.kr  (go.html 추적 링크 · 정보글 주소)
     'tpf_admin_url', coalesce(value->>'tpf_admin_url', ''),    -- 예: https://today-fund-admin.vercel.app (연동 API)
     'tpf_post_on_publish', coalesce((value->>'tpf_post_on_publish')::boolean, true),
     'tpf_forward_leads', coalesce((value->>'tpf_forward_leads')::boolean, true)
   )
  where id = 1;
+
+
+-- ===== 017_site_landing.sql =====
+-- 017: 오늘의 정책자금 홈페이지 '오늘의 랜딩'(today.html) — 랜딩 단계가 홈페이지 틀에 넣을 글을 함께 저장
+--  · landing_variants.site : { badge, headline, sub, points[] }  (공장 /l/ 템플릿 슬롯과 별개로 홈페이지 틀용)
+--  · contents.site_landing : 홈페이지에 보낸 결과 { url, deadline, expiresAt, at }
+alter table public.landing_variants add column if not exists site jsonb;
+alter table public.contents add column if not exists site_landing jsonb;
+
+
+-- ===== 018_program_changes.sql =====
+-- 018: 공고 변경 감지 — 이미 다룬 정책자금 공고의 일정 · 내용이 바뀌었는지 매일 다시 확인하고, 반영 여부를 사람이 결정
+--  · program_changes : 감지된 변경 1건 = 바뀐 항목(전 → 후) + 실제 변경 공고 링크(근거) + 결정(반영 · 무시)
+--  · contents.program_check : 마지막 확인 결과 {at, status, changed, summary}
+create table if not exists public.program_changes (
+  id bigserial primary key,
+  content_id uuid not null references public.contents(id) on delete cascade,
+  detected_at timestamptz not null default now(),
+  status text not null default 'pending' check (status in ('pending', 'applied', 'dismissed')),
+  program_status text,                  -- 접수중 · 접수예정 · 마감 · 조기마감 · 취소 · 확인불가
+  summary text,
+  confidence text,                      -- 높음 · 보통 · 낮음
+  changes jsonb not null default '[]',  -- [{field, label, before, after}]
+  evidence jsonb not null default '[]', -- [{title, url, date, quote}] 실제 변경 공고 · 정정 공고 링크
+  proposed jsonb,                       -- 반영하면 바뀔 program 값 {deadline_iso, period, amount, …}
+  decided_by text,
+  decided_at timestamptz,
+  note text,
+  applied jsonb                         -- 반영 결과 (홈페이지 랜딩 · 진행 중인 정책자금 갱신)
+);
+create index if not exists program_changes_status_idx on public.program_changes(status, detected_at desc);
+create index if not exists program_changes_content_idx on public.program_changes(content_id, detected_at desc);
+alter table public.program_changes enable row level security;
+drop policy if exists admin_all on public.program_changes;
+create policy admin_all on public.program_changes for all to authenticated using (public.is_admin()) with check (public.is_admin());
+
+alter table public.contents add column if not exists program_check jsonb;
 
 
 -- 확인용: 테이블 목록 (26개가 나오면 완료)

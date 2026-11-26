@@ -48,6 +48,35 @@
 
 설정 전에 만든 카피에는 공장 랜딩 링크가 들어 있습니다. 홈페이지 주소를 넣은 뒤 07 채널 카피를 다시 생성하면 추적 링크로 바뀝니다.
 
+## 오늘의 랜딩 · 진행 중인 정책자금 (홈페이지 안)
+
+| 홈페이지 | 무엇 | 언제 사라지나 |
+|---|---|---|
+| `today.html?c=코드` 오늘의 랜딩 | 숏폼마다 같은 틀(히어로 · 카운트다운 · 공고 한눈에 · 핵심 · 혜택 · 절차 · 같은 자금 사례 · FAQ · 신청폼)에 글과 사례가 바뀜. 숏폼 영상 임베드 | 접수 마감 시각에 카운트다운이 0 이 되면 즉시 '마감' 화면 → 진행 중인 정책자금 · 신청폼 안내 |
+| 모든 페이지 왼쪽 아래 이벤트 알림 | 가장 마감이 가까운 진행 중 랜딩 + 카운트다운 | 마감 시 사라짐 · 닫기 누르면 방문 동안 숨김 |
+| 메인 '지금 접수 중인 정책자금' · `funds-open.html` | 접수 마감 전 공고 카드(D-day · 한도 · 금리 · 대상 · 마감 시각 · 랜딩/원문 버튼), 자금 종류 탭 | 마감 시각이 지나면 30초 안에 사라짐 · 공고 0건이면 메인 섹션째 숨김 |
+| `today.html` (코드 없음) · 공장 `/l/today` | 가장 최근 진행 중 랜딩 | |
+
+- 업로드가 끝나면 공장이 정보글 → **오늘의 랜딩**(+ 조사한 공고를 진행 중인 정책자금으로) → 숏폼 등록 순서로 보냅니다.
+- 카운트다운 마감 = 04 이벤트 `deadline_iso` → 01 조사 `program.deadline_iso` → 마감 원문 해석(예: '2026.12.15 18:00', '12월 15일 오후 6시'). 마감일이 없으면 카운트다운 없이 21일 노출.
+- 숏폼 링크(go.html?c=코드)는 **마감 전엔 오늘의 랜딩**, 마감 후엔 정보글로 연결됩니다.
+- 공장 `/l/슬러그`·`/l/today`·`/policy` 는 홈페이지 주소가 설정돼 있으면 홈페이지 오늘의 랜딩 · 정보글 목록으로 이동합니다(공장 템플릿 검수는 `/l/슬러그?preview=1`).
+- 홈페이지 관리자 **[진행 중인 정책자금]**: 공고 직접 추가 · 수정 · 삭제, 랜딩 마감일 변경 · 숨김.
+- 공장 Supabase 에 `017_site_landing.sql` (all-in-one 에 포함) — 랜딩 단계의 홈페이지용 글(site) 저장.
+
+## 진행 중 · 예정 공고만 다루기 + 공고 변경 확인
+
+**조사(01)**: 오늘 날짜 기준으로 접수 중 · 접수 예정 공고만 고릅니다. 마감 지난 · 예산 소진 · 취소 공고는 후보에도 넣지 않고, 만약 들어오면 규칙 검사에서 **오류**로 막힙니다(승인 불가). 마감일은 공고 원문에서 확인해 `program.deadline_iso` · `program.url` 에, 정정 · 연장 공고는 `program.changes` 에 남깁니다.
+
+**공고 변경 확인** (공장 메뉴 [공고 변경 확인] · 매일 18시 자동, 설정 [홈페이지 연동 › 공고 변경 확인 (하루)] 개수만큼):
+1. 공개된 숏폼 중 아직 끝나지 않은 공고를 웹검색으로 다시 확인 — 마감 연장 · 조기 마감 · 예산 소진 · 취소 · 접수 기간 · 한도 · 금리 · 대상 · 신청 방법 정정
+2. 변경이 **실제 공고 페이지 링크(근거)**와 함께 확인되면 '결정 대기'로 올리고 알림(메일 종류 '공고 변경 감지'). 근거 링크가 없으면 올리지 않음
+3. 결정 화면: 항목별 **지금 → 새 내용**, 근거 링크 · 핵심 문구 · 날짜, 처음 조사한 원문 링크, 확신도
+4. **[반영]** → 조사 산출물의 공고 값 · 이벤트 마감 수정 → 홈페이지 오늘의 랜딩(카운트다운) · 진행 중인 정책자금 갱신. 마감 · 취소면 즉시 마감 처리. **[무시]** → 기록만
+5. 정보글 본문은 자동으로 바뀌지 않습니다 — 필요하면 홈페이지 관리자에서 수정
+
+콘텐츠 상세 [홈페이지 연동] 카드에서 이 콘텐츠만 [공고 변경 지금 확인]. CLI · MCP: `program_check`. 공장 Supabase 에 `018_program_changes.sql` (all-in-one 포함).
+
 ## 정보글 대표 이미지 (썸네일)
 
 1. 08 SEO 정보글 단계가 `thumb_query`(영문 사진 검색어 2~4단어)를 함께 만듭니다 — 장면·사물 위주, 얼굴 클로즈업·국기·화폐는 피함
@@ -97,6 +126,7 @@
 | `POST /api/integration/shorts` | `{code, slug, title, topic, youtubeId, instagramId, instagramUrl, thumbnailUrl, publishedAt, postId, meta?}` |
 | `GET /api/integration/leads?since=ISO&codes=a,b` | `{codes: {코드: {total, by_channel, by_status, first_at, last_at}}, untracked, total}` |
 | `POST /api/integration/leads` | 공장 랜딩 신청 전달 `{name, phone, company, memo, code, channel, utm, request_id}` |
+| `POST /api/integration/landings` | `{landing:{code,title,fund,badge,headline,sub,program{…},deadline,deadlineLabel,benefit,benefits[],points[],steps[],effort,faq[],disclaimer,cta,formTitle,sources[],post,youtubeId,publishedAt}, program?:{name,agency,fund,amount,rate,target,period,apply,url,deadline}}` |
 | `POST /api/integration/metrics` | `{items:[{code, title, published_at, youtube{url,views,likes,comments,shares,subs,score}, instagram{…}, total, score, factory_url}]}` |
 
 ## 개인정보

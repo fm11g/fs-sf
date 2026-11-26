@@ -4,7 +4,7 @@ import { getOutput, getSettings } from './settings';
 import { sbAdmin } from './supabase/server';
 import { STATE_KO, stepDef, type StepKey } from './steps';
 
-export type NotifyEvent = 'step_done' | 'step_review' | 'step_failed' | 'render_done' | 'published' | 'sop_proposal' | 'sop_applied' | 'digest';
+export type NotifyEvent = 'step_done' | 'step_review' | 'step_failed' | 'render_done' | 'published' | 'program_change' | 'sop_proposal' | 'sop_applied' | 'digest';
 
 const site = (s: any) => siteUrl(s);
 
@@ -26,6 +26,8 @@ export async function notify(event: NotifyEvent, o: { contentId?: string; step?:
     let mail: { subject: string; html: string; text: string };
     if (event === 'sop_proposal' || event === 'sop_applied') {
       mail = proposalEmail(event, o.step!, o.extra?.proposal || {}, site(s), o.extra);
+    } else if (event === 'program_change') {
+      mail = programChangeEmail(o.extra || {}, site(s));
     } else if (event === 'digest') {
       mail = await digestEmail(s);
     } else {
@@ -117,3 +119,19 @@ export async function digestEmail(s: any) {
   return { subject: `[오늘의 정책자금] ${date} 공장 요약 — 결정 대기 ${waiting.length}건`, html: layout({ title: `${date} 공장 요약`, pre: `결정 대기 ${waiting.length}건 · 게시 ${publishedToday.length}편 · 신청 ${leads || 0}건`, body, cta: { label: '현황판 열기', url: `${base}/admin` } }), text };
 }
 
+
+/** 공고 변경 감지 메일 — 바뀐 항목(전 → 후) + 실제 변경 공고 링크 + 결정 화면 */
+function programChangeEmail(x: any, base: string) {
+  const rows: [string, any][] = (x.changes || []).map((c: any) => [esc(c.label || c.field), `${esc(c.before || '—')} → <b>${esc(c.after || '—')}</b>`]);
+  const ev = (x.evidence || []).map((e: any) => `<li><a href="${esc(e.url)}">${esc(e.title || e.url)}</a>${e.date ? ` · ${esc(e.date)}` : ''}${e.quote ? `<br><span style="color:#6b7594">“${esc(e.quote)}”</span>` : ''}</li>`).join('');
+  const title = `공고 변경 감지: ${x.program || x.title || ''}`;
+  return {
+    subject: `[공고 변경 확인] ${x.program || x.title || ''} — ${x.program_status || '변경'}`,
+    html: layout({
+      title, pre: x.summary || '', badge: { text: x.program_status || '변경', color: '#c0392b' },
+      body: p(esc(x.summary || '')) + h2('바뀐 내용') + kv(rows) + h2('근거 (실제 변경 공고)') + `<ul style="padding-left:18px;font-size:14px;line-height:1.7">${ev}</ul>` + p(`확신도: ${esc(x.confidence || '-')} · 반영하면 홈페이지 오늘의 랜딩 · 진행 중인 정책자금이 새 일정으로 바뀝니다.`, '#6b7594'),
+      cta: { label: '반영할지 결정하기', url: `${base}/admin/program-changes` },
+    }),
+    text: `${title}\n${x.summary || ''}\n${(x.changes || []).map((c: any) => `- ${c.label}: ${c.before} → ${c.after}`).join('\n')}\n근거: ${(x.evidence || []).map((e: any) => e.url).join(' ')}\n${base}/admin/program-changes`,
+  };
+}

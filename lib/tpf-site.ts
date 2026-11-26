@@ -14,6 +14,7 @@ import { sbAdmin } from './supabase/server';
 import { hydrateEnv } from './secrets';
 import { profileLink, trackCode, trackedLink } from './track';
 import { defaultQuery, findPhoto } from './photo';
+import { isoKst, parseDeadline } from './deadline';
 import type { Settings } from './types';
 
 const trim = (u?: string | null) => String(u || '').trim().replace(/\/+$/, '');
@@ -97,6 +98,73 @@ export async function publishPost(contentId: string, o: { force?: boolean } = {}
   return site_post;
 }
 
+/** 주제 분류 · 공고 이름 → 홈페이지 자금 종류 키 (사례 · 진행 중인 정책자금 분류) */
+export function fundKey(text: string) {
+  if (/대환/.test(text)) return 'refinance';
+  if (/수출|무역|해외/.test(text)) return 'export';
+  if (/시설|설비|스마트공장|공장/.test(text)) return 'facility';
+  if (/창업|R&D|기술|연구/.test(text)) return 'startup';
+  if (/운전|인건비|고용|원자재|긴급|재해|소상공인|보증/.test(text)) return 'operating';
+  return '';
+}
+
+/** 공고 마감(카운트다운 종료): 이벤트 deadline_iso → 조사 deadline_iso → 마감 글 해석 */
+export function contentDeadline(c: any): string | null {
+  const p = c.research?.program || {};
+  return isoKst(c.offer?.deadline_iso) || isoKst(p.deadline_iso) || parseDeadline(p.deadline) || parseDeadline(c.offer?.deadline_label) || null;
+}
+
+/**
+ * 오늘의 랜딩 → 홈페이지 today.html?c=코드 (+ 진행 중인 정책자금 공고 1건)
+ * 글: 랜딩 단계 site 블록 → 없으면 랜딩 슬롯 · 이벤트 · 기획 훅. 사례: 홈페이지 사례 중 같은 자금 종류.
+ */
+export async function publishLanding(contentId: string) {
+  const s = await getSettings();
+  const db = sbAdmin();
+  const { data: c } = await db.from('contents').select('id, slug, track_code, topic, research, plan, offer, post, youtube_id, published_at, site_post').eq('id', contentId).single();
+  if (!c) throw new Error('콘텐츠 없음');
+  if (!c.offer) throw new Error('이벤트(04) 산출물이 없습니다');
+  const code = await ensureCode(c);
+  if (!code) throw new Error('콘텐츠 코드를 만들 수 없습니다');
+  const { data: lv } = await db.from('landing_variants').select('*').eq('content_id', contentId).maybeSingle();
+  const v: Record<string, string> = (lv as any)?.values || {};
+  const site: any = (lv as any)?.site || {};
+  const r = c.research || {}, p = r.program || {}, o = c.offer || {};
+  const fund = fundKey(`${r.topic_category || ''} ${p.name || ''} ${c.topic || ''}`);
+  const deadline = contentDeadline(c);
+  const strip = (x: unknown) => String(x ?? '').replace(/\\n/g, '\n').trim();
+  const points = (site.points?.length ? site.points : [v.hero_point1, v.hero_point2, v.hero_point3].filter(Boolean).length ? [v.hero_point1, v.hero_point2, v.hero_point3] : (r.facts || []).slice(0, 3).map((f: any) => f.claim)).map(strip).filter(Boolean);
+  const landing = {
+    code, title: strip(o.event_name) || strip(c.post?.title) || c.topic, fund,
+    badge: strip(site.badge) || [p.agency, o.event_name].filter(Boolean).join(' · ').slice(0, 30),
+    headline: strip(site.headline) || strip(v.hero_hook) || strip(c.plan?.chosen_hook) || strip(o.event_name),
+    sub: strip(site.sub) || strip(o.bridge) || strip(v.hero_q),
+    program: {
+      name: p.name, agency: p.agency, amount: p.amount, rate: p.rate, period: p.period,
+      target: Array.isArray(p.eligibility) ? p.eligibility : [], apply: p.how_to_apply,
+      url: /^https:\/\//.test(String(p.url || '')) ? p.url : (r.facts || []).map((f: any) => f.source_url).find((u: any) => /^https:\/\//.test(String(u || ''))) || '',
+    },
+    deadline, deadlineLabel: strip(o.deadline_label).slice(0, 40),
+    benefit: strip(o.main_benefit), benefits: o.benefits || [], points, steps: o.steps || [], effort: strip(o.effort),
+    faq: [...(o.objections || []), ...((c.post?.faq || []) as any[])].slice(0, 5),
+    disclaimer: strip(o.disclaimer), cta: strip(o.cta), formTitle: strip(o.form_title),
+    sources: (r.facts || []).filter((f: any) => /^https:\/\//.test(String(f.source_url || ''))).slice(0, 4).map((f: any) => ({ title: f.source_title || '공고 원문', url: f.source_url })),
+    post: c.site_post?.slug ? `./${c.site_post.slug}.html` : null,
+    youtubeId: c.youtube_id || null, publishedAt: c.published_at || new Date().toISOString(),
+    defaultDays: 21,
+  };
+  const program = p.name ? {
+    name: p.name, agency: p.agency, fund, amount: p.amount, rate: p.rate,
+    target: Array.isArray(p.eligibility) ? p.eligibility.slice(0, 2).join(' · ') : '', period: p.period, apply: p.how_to_apply,
+    url: landing.program.url, deadline,
+  } : null;
+  const res = await call(s, '/api/integration/landings', { method: 'POST', body: { landing, program } });
+  const site_landing = { url: res.url, deadline: res.deadline ?? deadline, expiresAt: res.expiresAt ?? null, at: new Date().toISOString() };
+  const up = await db.from('contents').update({ site_landing }).eq('id', contentId);
+  if (up.error && !/site_landing/.test(up.error.message)) throw new Error(up.error.message);
+  return site_landing;
+}
+
 /** 숏폼 등록 → 홈페이지 data/shorts.json (go.html 목적지) + shorts 테이블 */
 export async function registerShort(contentId: string) {
   const s = await getSettings();
@@ -123,11 +191,13 @@ export async function registerShort(contentId: string) {
 export async function siteSync(contentId: string, o: { force?: boolean } = {}) {
   const s = await getSettings();
   const cfg = tpfConfig(s);
-  const out: { post?: any; short?: any; warnings: string[] } = { warnings: [] };
+  const out: { post?: any; landing?: any; short?: any; warnings: string[] } = { warnings: [] };
   if (!cfg.api) { out.warnings.push('홈페이지 연동 미설정'); return out; }
   if (s.tpf_post_on_publish !== false || o.force) {
     try { out.post = await publishPost(contentId, o); } catch (e: any) { out.warnings.push(`정보글: ${e.message}`); }
   }
+  // 랜딩은 정보글 다음(정보글 주소를 넣으려고), 숏폼 등록 전(go.html 이 랜딩을 알게)
+  try { out.landing = await publishLanding(contentId); } catch (e: any) { out.warnings.push(`오늘의 랜딩: ${e.message}`); }
   try { out.short = await registerShort(contentId); } catch (e: any) { out.warnings.push(`숏폼 등록: ${e.message}`); }
   return out;
 }

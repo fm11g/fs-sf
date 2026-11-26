@@ -313,7 +313,7 @@ export default function Workbench({ params }: { params: { id: string } }) {
               {output != null && !edit && sel === 'script' && (
                 <table><tbody>{(c.script?.scenes || []).map((s) => <tr key={s.id}><td className="mute">{s.id}</td><td>{s.narration}</td><td className="mute">{s.captions.join(' / ')}</td></tr>)}</tbody></table>
               )}
-              {output != null && !edit && sel === 'landing' && <p><a href={`/l/${c.slug}`} target="_blank">랜딩 미리보기 ↗</a></p>}
+              {output != null && !edit && sel === 'landing' && <p><a href={`/l/${c.slug}?preview=1`} target="_blank">공장 템플릿 미리보기 ↗</a>{(c as any).site_landing?.url && <> · <a href={(c as any).site_landing.url} target="_blank">홈페이지 오늘의 랜딩 ↗</a></>}</p>}
               {output != null && !edit && sel !== 'script' && sel !== 'design' && <Readable value={sel === 'post' ? { ...output, body_markdown: undefined } : output} />}
               {output != null && !edit && sel === 'post' && <pre className="md">{output.body_markdown}</pre>}
             </div>
@@ -335,13 +335,13 @@ export default function Workbench({ params }: { params: { id: string } }) {
                     {(row.checks || []).map((k, i) => <div key={i} className={`check ${k.level}`}>{k.msg}</div>)}
                     {c.youtube_id && <p>YouTube: <a href={`https://youtube.com/shorts/${c.youtube_id}`} target="_blank">{c.youtube_id}</a> <span className="mute">← 스튜디오에서 댓글 고정</span></p>}
                     {c.instagram_id && <p>Instagram 미디어 ID: {c.instagram_id}</p>}
-                    {c.published_at && <p>정보글: <a href={(c as any).site_post?.url || `/policy/${c.slug}`} target="_blank">{(c as any).site_post?.url ? '홈페이지 정보글' : `/policy/${c.slug}`}</a> · 랜딩: <a href={`/l/${c.slug}`} target="_blank">/l/{c.slug}</a></p>}
+                    {c.published_at && <p>정보글: <a href={(c as any).site_post?.url || `/policy/${c.slug}`} target="_blank">{(c as any).site_post?.url ? '홈페이지 정보글' : `/policy/${c.slug}`}</a> · 랜딩: <a href={(c as any).site_landing?.url || `/l/${c.slug}`} target="_blank">{(c as any).site_landing?.url ? '홈페이지 오늘의 랜딩' : `/l/${c.slug}`}</a></p>}
                   </div>
                 </div>
               ) : <p className="mute">아직 렌더된 영상이 없습니다.</p>}
             </div>
           )}
-          {(sel === 'publish' || sel === 'copy' || sel === 'post') && <SiteBox c={c} onDone={load} />}
+          {(['publish', 'copy', 'post', 'offer', 'landing'] as string[]).includes(sel) && <SiteBox c={c} onDone={load} />}
 
           <details className="card">
             <summary><b>실행 로그</b></summary>

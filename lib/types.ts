@@ -53,6 +53,7 @@ export type Settings = {
   tpf_admin_url?: string;       // 홈페이지 관리자 주소 — /api/integration/*
   tpf_post_on_publish?: boolean; // 업로드되면 정보글 자동 발행
   tpf_forward_leads?: boolean;   // 공장 랜딩 신청을 홈페이지 관리자로 전달
+  program_watch_daily?: number;  // 공고 변경 확인: 하루에 다시 확인할 공고 수 (0 = 끔, 기본 3)
 };
 
 export type ScriptScene = { id: string; narration: string; captions: string[] };

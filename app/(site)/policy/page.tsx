@@ -1,9 +1,14 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { listPosts } from '@/lib/posts';
+import { getSettings } from '@/lib/settings';
 
-export const revalidate = 600;
+export const dynamic = 'force-dynamic';
 
 export default async function Home() {
+  // 홈페이지 연동이 있으면 정보글 목록은 홈페이지 「정책자금 정보」가 정본
+  const site = String((await getSettings()).tpf_site_url || '').trim().replace(/\/+$/, '');
+  if (site) redirect(`${site}/fund-info.html`);
   const posts = await listPosts();
   return (
     <>

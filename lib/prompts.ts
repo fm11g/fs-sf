@@ -68,13 +68,20 @@ ${c.topic ? `지정 주제/힌트: "${c.topic}" — 이 주제로 조사합니�
 최근 14일 내 다룬 주제(중복 회피): ${recentTopics?.length ? recentTopics.join(' / ') : '없음'}
 우선 출처: 중소벤처기업진흥공단, 소상공인시장진흥공단, 신용보증기금, 기술보증기금, 지역신용보증재단, 중소벤처기업부, 기업마당(bizinfo.go.kr), 지자체 공고.
 
+★ 시점 규칙 (가장 중요): 오늘은 ${todayKST()} 입니다.
+- 지금 접수 중이거나(접수중) 공고가 나와 곧 접수가 시작되는(접수예정) 정책자금만 고릅니다.
+- 접수 마감이 이미 지났거나, 예산 소진 · 조기 마감 · 취소된 공고는 후보에도 넣지 않습니다. 작년 · 지난 회차 공고를 올해 것처럼 쓰지 않습니다.
+- 마감일은 반드시 공고 원문(기관 누리집 · 기업마당)에서 확인하고, 원문 주소를 program.url 에 넣습니다. 기사 · 블로그만 보고 정하지 않습니다.
+- 일정이 바뀐 공고(연장 · 변경 공고 · 정정 공고)는 가장 최근 공고 기준으로 쓰고, 변경 사실을 facts 와 program.changes 에 남깁니다.
+- 후보마다 status 와 deadline_iso 를 적어, 지난 공고가 섞이지 않았는지 스스로 확인합니다.
+
 JSON 스키마:
 {
-  "candidates": [{ "topic": "", "why": "", "score": 0 }],
+  "candidates": [{ "topic": "", "why": "", "score": 0, "status": "접수중 | 접수예정", "deadline_iso": "YYYY-MM-DD 또는 빈 문자열(상시 · 예산 소진 시)" }],
   "topic": "선택한 주제 한 줄",
   "topic_category": "${DIMENSIONS.topic_category.values.join(' | ')} 중 하나",
   "angle": "왜 지금 이 사장님들이 봐야 하는지",
-  "program": { "name": "", "agency": "", "amount": "", "rate": "", "period": "", "eligibility": [""], "how_to_apply": "", "deadline": "" },
+  "program": { "name": "", "agency": "", "amount": "", "rate": "", "period": "접수 기간 원문", "eligibility": [""], "how_to_apply": "", "deadline": "마감 원문 (예: 2026.12.15 18:00, 예산 소진 시)", "deadline_iso": "YYYY-MM-DD 또는 YYYY-MM-DDTHH:mm (한국 시간). 공고 원문에 마감일이 없으면 빈 문자열", "start_iso": "접수 시작일 YYYY-MM-DD (모르면 빈 문자열)", "status": "접수중 | 접수예정", "url": "공고 원문 주소 (https)", "changes": [{ "what": "정정 · 연장 등 변경 내용", "url": "변경 공고 주소", "date": "" }] },
   "facts": [{ "claim": "", "source_title": "", "source_url": "", "date": "" }],
   "keywords": ["SEO 키워드 8~12개"],
   "risk_notes": ["확인 안 된 사항·주의점"],
@@ -138,6 +145,7 @@ JSON 스키마:
   "benefits": ["보조 혜택 1~2개"],
   "deadline_label": "공고의 실제 마감일 기반 문구. 근거 없으면 빈 문자열",
   "deadline_source": "마감 근거(조사 fact). 없으면 빈 문자열",
+  "deadline_iso": "이벤트 마감 = 홈페이지 카운트다운 종료 시각. 조사 program.deadline_iso 를 그대로(YYYY-MM-DD 또는 YYYY-MM-DDTHH:mm, 한국 시간). 근거 없으면 빈 문자열",
   "effort": "신청에 드는 시간·비용 (예: 전화 10분, 비용 없음)",
   "steps": ["신청 후 진행 3단계"],
   "form_title": "신청폼 제목 16자 이하",
@@ -165,7 +173,8 @@ ${cases?.length ? `
 등록된 실제 사례:
 ${cases.map((x: any) => `- #${x.id} | ${x.industry}${x.years ? ` ${x.years}년차` : ''} | ${[x.fund_type, x.badge1, x.badge2].filter(Boolean).join(' · ')} | ${x.amount} | "${x.title}"${x.tags?.length ? ` | ${x.tags.join(',')}` : ''}`).join('\n')}
 ` : ''}
-JSON 스키마: { "values": { "슬롯key": "문구" },${cases?.length ? ' "cases": [사례 id 순서],' : ''} ${AI_NOTES} } — 모든 슬롯 key 를 포함합니다(선택 슬롯은 "" 가능).${revise(prev, feedback)}`,
+홈페이지 '오늘의 랜딩'(todaypolicyfund.co.kr/today.html) 틀에 들어갈 글도 함께 씁니다(site): 배지 20자 이하, 헤드라인 2줄(각 16자 안팎, \n 으로 줄바꿈 · 영상 훅과 같은 단어), 서브 60자 안팎(영상 → 랜딩 이어지는 한 문장), 핵심 3개(각 30자 이하, 조사 근거 있는 것만).
+JSON 스키마: { "values": { "슬롯key": "문구" },${cases?.length ? ' "cases": [사례 id 순서],' : ''} "site": { "badge": "", "headline": "", "sub": "", "points": ["", "", ""] }, ${AI_NOTES} } — 모든 슬롯 key 를 포함합니다(선택 슬롯은 "" 가능).${revise(prev, feedback)}`,
 
   design: ({ c, prev, feedback, style, assets }) => {
     const st = style?.style;

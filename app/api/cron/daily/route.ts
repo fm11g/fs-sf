@@ -7,6 +7,7 @@ import { sbAdmin } from '@/lib/supabase/server';
 import { reapStale } from '@/lib/stop';
 import { refreshIgToken } from '@/lib/ig-token';
 import { syncLeads } from '@/lib/tpf-site';
+import { checkPrograms } from '@/lib/program-watch';
 
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
@@ -30,9 +31,11 @@ export async function GET(req: NextRequest) {
   const ig_token = await refreshIgToken().catch((e) => ({ error: e.message })); // 인스타 60일 토큰 자동 연장
   // 홈페이지 신청(DB) 수 → 콘텐츠별 lead_stats (채널 분석이 하루 쉬어도 공장 화면의 DB 수는 최신)
   const leads = await syncLeads().then((r) => ({ ok: r.ok, updated: r.updated, codes: r.map.size, warning: (r as any).warning })).catch((e) => ({ error: e.message }));
+  // 다룬 공고의 일정 · 내용 변경 확인 (근거 링크와 함께 결정 대기로) — 설정 program_watch_daily 개씩
+  const programs = await checkPrograms().catch((e) => ({ error: e.message }));
   const learned = await learnSweep().catch((e) => [{ error: e.message }]);
   const retried = await flushExports({ limit: 200 }).catch((e) => ({ error: e.message }));       // 실패했던 내보내기 재시도
   const rebuilt = await rebuildDatasets().then((r) => ({ commit: r.commit?.url, files: r.files, performance_rows: r.performance_rows })).catch((e) => ({ error: e.message }));
   const digest = await notify('digest');
-  return NextResponse.json({ reaped, ig_token, leads, learned, retried, rebuilt, digest });
+  return NextResponse.json({ reaped, ig_token, leads, programs, learned, retried, rebuilt, digest });
 }

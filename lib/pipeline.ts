@@ -19,6 +19,7 @@ import { exportNow, exportRun } from './export';
 import { recordSopUse, sopHash } from './sop';
 import { editorialBrief, noveltyChecks } from './editorial';
 import { siteLinks } from './tpf-site';
+import { isoKst, parseDeadline } from './deadline';
 export { getOutput, getSettings };
 import { STEP_DEFS, STEP_KEYS, downstream, stepDef, type StepKey } from './steps';
 import type { Settings, StepRow } from './types';
@@ -94,6 +95,14 @@ export function lint(step: StepKey, out: any, c: any, s: Settings, extra: { slot
     const noSrc = facts.filter((f: any) => !/^https?:\/\//.test(f.source_url || '')).length;
     if (noSrc) err(`출처 URL 없는 fact ${noSrc}개`);
     if (!out?.program?.deadline) warn('접수 마감/기간이 비어 있음');
+    // 지난 공고 차단: 마감이 이미 지났거나 상태가 마감 · 취소면 승인 불가
+    const pg = out?.program || {};
+    const dl = isoKst(pg.deadline_iso) || parseDeadline(pg.deadline);
+    if (dl && Date.parse(dl) < Date.now()) err(`이미 접수가 끝난 공고 (마감 ${String(pg.deadline_iso || pg.deadline)}) — 진행 중 · 예정 공고로 다시 조사`);
+    if (/마감|종료|취소|소진/.test(String(pg.status || ''))) err(`공고 상태가 '${pg.status}' — 진행 중 · 예정 공고만 다룹니다`);
+    if (!/^https?:\/\//.test(String(pg.url || ''))) warn('공고 원문 주소(program.url) 없음 — 마감 · 변경 확인이 어려움');
+    const pastCands = (out?.candidates || []).filter((x: any) => { const d = isoKst(x.deadline_iso); return d && Date.parse(d) < Date.now(); }).length;
+    if (pastCands) warn(`후보 중 마감 지난 공고 ${pastCands}개`);
   }
   if (step === 'plan') {
     const st = out?.structure || [];
@@ -123,6 +132,10 @@ export function lint(step: StepKey, out: any, c: any, s: Settings, extra: { slot
     if (out?.deadline_label && !out?.deadline_source) err('마감 문구에 근거(deadline_source)가 없음');
     if (!/심사/.test(out?.disclaimer || '')) warn('유의 문구에 "심사" 안내가 없음');
     if (charLen(out?.cta || '') > 14) warn('버튼 문구 14자 초과');
+    // 홈페이지 오늘의 랜딩 카운트다운 = 이 마감일 (지나면 홈페이지에서 자동으로 숨김)
+    const dl = isoKst(out?.deadline_iso) || isoKst(c.research?.program?.deadline_iso) || parseDeadline(c.research?.program?.deadline);
+    if (!dl) warn('마감일(deadline_iso) 없음 — 홈페이지 랜딩에 카운트다운 없이 21일 노출');
+    else if (Date.parse(dl) < Date.now()) err('마감일이 이미 지남 — 홈페이지 랜딩이 바로 마감 처리됩니다');
   }
   if (step === 'landing') {
     const all = extra.slots || [];
@@ -310,6 +323,12 @@ async function finalize(step: StepKey, c: any, s: Settings, raw: any, prep: Prep
     const slots = prep.slots || [];
     let values: Record<string, string> = { ...(out.values || out) };
     delete (values as any).cases;
+    // 홈페이지 '오늘의 랜딩' 틀용 글 (슬롯과 별개)
+    const site = out.site && typeof out.site === 'object' ? {
+      badge: String(out.site.badge || '').slice(0, 30), headline: String(out.site.headline || '').slice(0, 90),
+      sub: String(out.site.sub || '').slice(0, 160), points: (Array.isArray(out.site.points) ? out.site.points : []).map((x: any) => String(x || '').slice(0, 90)).filter(Boolean).slice(0, 5),
+    } : null;
+    delete (values as any).site;
     // AI 가 후기 칸을 직접 썼어도 버림 — 실제 사례 원문으로만 채움
     for (const k of Object.keys(values)) if (isCaseKey(k)) delete values[k];
     let caseIds: number[] = [];
@@ -335,10 +354,10 @@ async function finalize(step: StepKey, c: any, s: Settings, raw: any, prep: Prep
         values = { ...values, ...fix.data.values };
       } catch { /* 규칙 검사에 맡김 */ }
     }
-    await db.from('landing_variants').upsert(
-      { content_id: c.id, template_id: prep.tpl.id, slug: c.slug, values, warnings: validate(slots, values), case_ids: caseIds },
-      { onConflict: 'content_id' },
-    );
+    const lvRow = { content_id: c.id, template_id: prep.tpl.id, slug: c.slug, values, warnings: validate(slots, values), case_ids: caseIds };
+    const lv = await db.from('landing_variants').upsert({ ...lvRow, ...(site ? { site } : {}) }, { onConflict: 'content_id' });
+    // 017 마이그레이션 전이면 site 칸 없이 저장 (홈페이지 랜딩은 이벤트 · 조사로 채움)
+    if (lv.error && /site/.test(lv.error.message)) await db.from('landing_variants').upsert(lvRow, { onConflict: 'content_id' });
     if (caseIds.length) {
       for (const id of caseIds) {
         const x = prep.cases!.find((y) => Number(y.id) === id);

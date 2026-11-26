@@ -196,7 +196,7 @@ export function LandingEditor({ slug, variant, slots, onSave }: { slug: string; 
     <div className="card">
       <div className="row" style={{ justifyContent: 'space-between' }}>
         <h2>랜딩 슬롯 문구 <span className={`tag ${variant.is_live ? 'ok' : ''}`}>{variant.is_live ? '공개 중' : '게시 시 공개'}</span></h2>
-        <a href={`/l/${slug}`} target="_blank">미리보기 ↗</a>
+        <a href={`/l/${slug}?preview=1`} target="_blank">공장 템플릿 미리보기 ↗</a>
       </div>
       {text.map((s) => {
         const n = len(vals[s.key] || '');

@@ -39,7 +39,7 @@ update public.settings set value = value
   || jsonb_build_object(
     'perf_weights', case when coalesce(value->'perf_weights', '{}'::jsonb) ? 'leads' then value->'perf_weights'   -- 이미 DB 가중치를 정했으면 유지
       else jsonb_build_object('leads', 0.40, 'views', 0.12, 'engagement', 0.10, 'shares', 0.10, 'comments', 0.10, 'subscribers', 0.10, 'retention', 0.05, 'conversion', 0.03) end,
-    'tpf_site_url', coalesce(value->>'tpf_site_url', ''),      -- 예: https://todayfund.co.kr  (go.html 추적 링크 · 정보글 주소)
+    'tpf_site_url', coalesce(value->>'tpf_site_url', ''),      -- 예: https://todaypolicyfund.co.kr  (go.html 추적 링크 · 정보글 주소)
     'tpf_admin_url', coalesce(value->>'tpf_admin_url', ''),    -- 예: https://today-fund-admin.vercel.app (연동 API)
     'tpf_post_on_publish', coalesce((value->>'tpf_post_on_publish')::boolean, true),
     'tpf_forward_leads', coalesce((value->>'tpf_forward_leads')::boolean, true)

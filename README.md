@@ -43,6 +43,8 @@ lib/perf.ts           채널 영상 최종 점수 (순수 · DB 40%)
 lib/track.ts          숏폼 고유 코드 · 추적 링크 · 영상별 DB 배분 (순수)
 lib/tpf-site.ts       홈페이지 연동: 정보글 발행 · 숏폼 등록 · DB 수 동기화 · 랜딩 신청 전달
 lib/photo.ts          정보글 대표 사진 찾기 (Pexels · Unsplash)
+lib/deadline.ts       공고 마감일 글 → 날짜 (순수)
+lib/program-watch.ts  공고 변경 확인: 다룬 공고 재확인 → 근거 링크와 함께 결정 대기 → 반영 시 홈페이지 갱신
 lib/performance.ts    콘텐츠별 성과 한눈에 (DB · 조회 · 공유 · 구독 · 점수) + 홈페이지 관리자로 지표 전송 · lib/channels.ts 댓글 분석·형태 분류·인사이트
 lib/editorial*.ts     편성: 분류 목록(taxonomy) · 후보 점수·반복 규칙(core, 순수) · 편성표·슬롯·브리프(서버)
 worker/src/channels.ts 유튜브·인스타 수집

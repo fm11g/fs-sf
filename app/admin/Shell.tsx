@@ -11,6 +11,7 @@ const NAV: { href: string; label: string; block: string; ext?: boolean }[] = [
   { href: '/admin/styles', label: '영상 스타일', block: 'styles' },
   { href: '/admin/references', label: '참고 영상', block: 'references' },
   { href: '/admin/performance', label: '성과 한눈에', block: 'channels' },
+  { href: '/admin/program-changes', label: '공고 변경 확인', block: 'board' },
   { href: '/admin/channels', label: '채널 성과', block: 'channels' },
   { href: '/admin/metrics', label: '작업 효율', block: 'metrics' },
   { href: '/admin/sop', label: 'SOP · AI 제어', block: 'sop' },
@@ -47,7 +48,7 @@ export default function Shell({ me, children }: { me: Me; children: React.ReactN
           ))}
           {me.role === 'owner' && <>
             <Link href="/policy" target="_blank">정보글 사이트 ↗</Link>
-            <Link href="/l/today" target="_blank">오늘 랜딩 ↗</Link>
+            <Link href="/l/today" target="_blank">오늘의 랜딩 ↗</Link>
           </>}
           <div className="acct">
             <span title={me.username || me.email}>{me.name || me.username || me.email.split('@')[0]} <small className={`role ${me.role}`}>{me.role === 'owner' ? '대표' : '직원'}</small></span>

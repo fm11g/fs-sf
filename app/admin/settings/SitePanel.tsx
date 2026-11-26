@@ -20,9 +20,10 @@ export default function SitePanel({ v, setV, onSave }: { v: any; setV: (x: any) 
   return (
     <div className="card">
       <h2>🏠 오늘의 정책자금 홈페이지 연동 <span className="mute">추적 링크 · 정보글 자동 발행 · 숏폼별 DB 수 → 성과 점수</span></h2>
-      <div className="slot"><b>홈페이지 주소</b><input value={v.tpf_site_url || ''} placeholder="https://todayfund.co.kr" onChange={(e) => setV({ ...v, tpf_site_url: e.target.value.trim() })} /><span className="mute">입력하면 카피 링크가 <code>go.html?c=코드</code> 추적 링크로 바뀝니다</span></div>
+      <div className="slot"><b>홈페이지 주소</b><input value={v.tpf_site_url || ''} placeholder="https://todaypolicyfund.co.kr" onChange={(e) => setV({ ...v, tpf_site_url: e.target.value.trim() })} /><span className="mute">입력하면 카피 링크가 <code>go.html?c=코드</code> 추적 링크로 바뀝니다</span></div>
       <div className="slot"><b>홈페이지 관리자 주소</b><input value={v.tpf_admin_url || ''} placeholder="https://today-fund-admin.vercel.app" onChange={(e) => setV({ ...v, tpf_admin_url: e.target.value.trim() })} /><span className="mute">연동 키는 [연결·키 &gt; 오늘의 정책자금 사이트]의 TPF_ADMIN_KEY</span></div>
       <div className="slot"><b>업로드되면 정보글 발행</b><input type="checkbox" checked={v.tpf_post_on_publish !== false} onChange={(e) => setV({ ...v, tpf_post_on_publish: e.target.checked })} style={{ justifySelf: 'start' }} /><span className="mute">정보글 단계 산출물 → 홈페이지 「정책자금 정보」 (목차 · FAQ · 영상 · 검색 메타)</span></div>
+      <div className="slot"><b>공고 변경 확인 (하루)</b><input type="number" min={0} max={10} value={v.program_watch_daily ?? 3} onChange={(e) => setV({ ...v, program_watch_daily: Number(e.target.value) })} /><span className="mute">다룬 공고 중 아직 진행 중인 것을 매일 18시에 몇 개씩 다시 확인 (웹검색 비용 · 0 = 끔) → [공고 변경 확인]</span></div>
       <div className="slot"><b>공장 랜딩 신청 전달</b><input type="checkbox" checked={v.tpf_forward_leads !== false} onChange={(e) => setV({ ...v, tpf_forward_leads: e.target.checked })} style={{ justifySelf: 'start' }} /><span className="mute">공장 /l/ 랜딩 신청도 홈페이지 관리자 상담 목록으로</span></div>
       <p className="mute">
         상태: 링크 {st?.links ? '✅' : '—'} · API {st?.api ? '✅' : '—'} {st?.key ? `(키 ${st.key})` : ''}

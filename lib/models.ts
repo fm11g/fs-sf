@@ -56,6 +56,7 @@ export const TASKS: { key: string; label: string; group: '공정 단계' | '검�
   { key: 'motion', label: 'Claude 모션그래픽 설계', group: '분석·편성', tier: 'deep', why: '장면마다 레이어·키프레임·타이밍을 설계 — 화면 완성도를 좌우', defaults: { claude: 'claude-opus-5-5', effort: 'high' } },
   { key: 'reference', label: '참고 영상 분석', group: '분석·편성', tier: 'normal', why: '화면 프레임·대사로 구조와 재현 규칙 정리 (이미지 이해 필요)', defaults: { claude: 'claude-sonnet-5-5', effort: 'medium' }, vision: true },
   { key: 'channels', label: '채널 댓글 분석·분류', group: '분석·편성', tier: 'fast', why: '영상 형태 분류와 댓글 의도 집계 — 대량·단순', defaults: { claude: 'claude-haiku-5-5', effort: 'low' } },
+  { key: 'program_watch', label: '공고 변경 확인', group: '분석·편성', tier: 'normal', why: '다룬 공고의 마감 연장 · 조기 마감 · 내용 정정을 웹검색으로 다시 확인하고 근거 링크를 찾음', defaults: { claude: 'claude-sonnet-5-5', effort: 'medium' }, web: true },
   { key: 'editorial', label: '편성 AI PD', group: '분석·편성', tier: 'deep', why: '점수·새로움·흐름을 따져 한 주 순서를 다듬음', defaults: { claude: 'claude-sonnet-5-5', effort: 'high' } },
 ];
 export const taskDef = (k: string) => TASKS.find((t) => t.key === k);

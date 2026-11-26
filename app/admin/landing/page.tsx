@@ -21,7 +21,7 @@ export default function LandingTemplates() {
       <div className="card">
         <p className="mute" style={{ marginTop: 0 }}>
           랜딩 전체 HTML을 붙여넣고, 바꿀 문구 요소에 <code>data-slot="키" data-max="최대글자수" data-label="용도"</code> 를 붙이세요.
-          속성값은 <code>data-slot-attr="content"</code>. 콘텐츠마다 AI가 글자수에 맞춰 문구를 채워 <code>/l/슬러그</code> 와 <code>/l/today</code> 로 서비스합니다.
+          속성값은 <code>data-slot-attr="content"</code>. 콘텐츠마다 AI가 글자수에 맞춰 문구를 채워 <code>/l/슬러그</code> 와 <code>/l/today</code> 로 서비스합니다. 홈페이지 연동이 켜져 있으면 공개된 숏폼의 랜딩은 홈페이지 <b>오늘의 랜딩</b>(today.html?c=코드 · 카운트다운 · 마감 시 자동 숨김)으로 연결되고, 이 템플릿은 <code>?preview=1</code> 검수용으로 남습니다.
           기존 도메인(govbizfund.co.kr)에서 그대로 쓰려면 그 페이지에 <code>&lt;script src=&quot;{typeof location !== 'undefined' ? location.origin : ''}/sync.js&quot; defer&gt;&lt;/script&gt;</code> 한 줄을 넣으면 같은 슬롯이 자동 교체됩니다.
         </p>
         <div className="row" style={{ marginBottom: 8 }}>
